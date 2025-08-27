@@ -1,8 +1,8 @@
-# The job that triggers abbott_lv_pipeline.
+# The job that triggers lv_dlt_pipeline.
 resources:
   jobs:
-    abbott_lv_job:
-      name: abbott_lv_job
+    lv_dlt_job:
+      name: lv_dlt_job
 
       trigger:
         # Run this job every day, exactly one day from the last run; see https://docs.databricks.com/api/workspace/jobs/create#trigger
@@ -16,4 +16,4 @@ resources:
       tasks:
         - task_key: refresh_pipeline
           pipeline_task:
-            pipeline_id: ${resources.pipelines.abbott_lv_pipeline.id}
+            pipeline_id: ${resources.pipelines.lv_dlt_pipeline.id}
