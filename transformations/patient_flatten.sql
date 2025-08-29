@@ -1,65 +1,60 @@
+-- ====================================================
+-- 1️⃣ Silver Table: store parsed JSON as VARIANT
+-- ====================================================
 CREATE OR REFRESH STREAMING TABLE silver_events_patient_data
 (
-  ID STRING,
-  Shard STRING,
-  Private STRING,
-  Name STRING,
-  Address1 STRING,
-  Address2 STRING,
-  City STRING,
-  State STRING,
-  ZipCode STRING,
-  Country STRING,
-  PhoneNumber STRING,
-  BusinessID STRING,
-  Created STRING,
-  CreatedBy STRING,
-  Updated STRING,
-  UpdatedBy STRING,
-  D_parsed VARIANT,
-  P_parsed VARIANT,
-  V_parsed VARIANT,
-  processedTime TIMESTAMP
+    ID STRING,
+    Shard STRING,
+    Private STRING,
+    Name STRING,
+    Address1 STRING,
+    Address2 STRING,
+    City STRING,
+    State STRING,
+    ZipCode STRING,
+    Country STRING,
+    PhoneNumber STRING,
+    BusinessID STRING,
+    Created STRING,
+    CreatedBy STRING,
+    Updated STRING,
+    UpdatedBy STRING,
+
+    -- Flexible VARIANT column
+    D_parsed VARIANT,
+
+    processedTime TIMESTAMP
 )
 TBLPROPERTIES (
-  'delta.feature.variantType-preview' = 'supported',
-  'pipelines.schemaInference' = 'true',
-  'pipelines.autoOptimizeSchema' = 'true'
+    'delta.enableChangeDataFeed' = 'true',
+    'delta.enableDeletionVectors' = 'true',
+    'delta.enableRowTracking' = 'true',
+    'delta.feature.variantType-preview' = 'supported',
+    'quality' = 'silver'
 );
 
+-- ====================================================
+-- 2️⃣ CDC Flow: parse JSON into VARIANT
+-- ====================================================
 CREATE FLOW silver_events_patient_data_cdc AS AUTO CDC INTO
   silver_events_patient_data
 FROM (
-  SELECT
-    ID, Shard, Private, Name, Address1, Address2, City, State,
-    ZipCode, Country, PhoneNumber, BusinessID, Created, CreatedBy, Updated, UpdatedBy,
-    from_json(
-      regexp_replace(regexp_replace(substring(D,2,length(D)-2), '""','"'), '\\\\"','"'),
-      NULL,
-      map(
-        'schemaLocationKey','silver_events_patient_data_D',
-        'schemaHints','field1 STRING, field2 INT'
-      )
-    ) AS D_parsed,
-    from_json(
-      regexp_replace(regexp_replace(substring(P,2,length(P)-2), '""','"'), '\\\\"','"'),
-      NULL,
-      map(
-        'schemaLocationKey','silver_events_patient_data_P',
-        'schemaHints','field1 STRING, field2 INT'
-      )
-    ) AS P_parsed,
-    from_json(
-      regexp_replace(regexp_replace(substring(V,2,length(V)-2), '""','"'), '\\\\"','"'),
-      NULL,
-      map(
-        'schemaLocationKey','silver_events_patient_data_V',
-        'schemaHints','field1 STRING, field2 INT'
-      )
-    ) AS V_parsed,
-    current_timestamp() AS processedTime,
-    _change_type, _commit_version, _commit_timestamp
-  FROM STREAM(patient_cdf)
+    SELECT
+        ID, Shard, Private, Name, Address1, Address2, City, State,
+        ZipCode, Country, PhoneNumber, BusinessID, Created, CreatedBy, Updated, UpdatedBy,
+
+        parse_json(
+            regexp_replace(
+                regexp_replace(substring(D, 2, length(D) - 2), '""', '"'),
+                '\\\\"', '"'
+            )
+        ) AS D_parsed,
+
+        current_timestamp() AS processedTime,
+        _change_type,
+        _commit_version,
+        _commit_timestamp
+    FROM STREAM(patient_cdf)
 )
 KEYS (ID, BusinessID)
 APPLY AS DELETE WHEN _change_type='delete'
@@ -67,3 +62,77 @@ APPLY AS TRUNCATE WHEN _change_type='truncate'
 SEQUENCE BY (_commit_version,_commit_timestamp)
 COLUMNS * EXCEPT (_change_type,_commit_version,_commit_timestamp)
 STORED AS SCD TYPE 1;
+
+-- ====================================================
+-- 3️⃣ Silver Flatten Table
+-- ====================================================
+CREATE OR REFRESH STREAMING TABLE silver_events_patient_data_flat
+(
+    ID STRING,
+    BusinessID STRING,
+    Shard STRING,
+    State STRING,
+    Name STRING,
+    CreatedBy STRING,
+    UpdatedBy STRING,
+
+    -- Flattened JSON fields
+    D_address1 STRING,
+    D_address2 STRING,
+    D_city STRING,
+    D_country STRING,
+    D_created BIGINT,
+    D_id STRING,
+    D_name STRING,
+    D_phoneNumber STRING,
+    D_private BOOLEAN,
+    D_zipCode STRING,
+    D_programs VARIANT,
+    D_records ARRAY<VARIANT>,
+
+    processedTime TIMESTAMP
+)
+TBLPROPERTIES (
+    'delta.enableChangeDataFeed' = 'true',
+    'delta.enableDeletionVectors' = 'true',
+    'delta.enableRowTracking' = 'true',
+    'delta.feature.variantType-preview' = 'supported',
+    'quality' = 'silver'
+);
+
+-- ====================================================
+-- 4️⃣ CDC Flow: flatten JSON dynamically
+-- ====================================================
+CREATE FLOW silver_events_patient_data_flat_cdc AS AUTO CDC INTO
+  silver_events_patient_data_flat
+FROM (
+    SELECT
+        s.ID,
+        s.BusinessID,
+        s.Shard,
+        s.State,
+        s.Name,
+        s.CreatedBy,
+        s.UpdatedBy,
+
+        s.D_parsed:address1::STRING AS D_address1,
+        s.D_parsed:address2::STRING AS D_address2,
+        s.D_parsed:city::STRING AS D_city,
+        s.D_parsed:country::STRING AS D_country,
+        s.D_parsed:created::BIGINT AS D_created,
+        s.D_parsed:id::STRING AS D_id,
+        s.D_parsed:name::STRING AS D_name,
+        s.D_parsed:phoneNumber::STRING AS D_phoneNumber,
+        s.D_parsed:private::BOOLEAN AS D_private,
+        s.D_parsed:zipCode::STRING AS D_zipCode,
+        s.D_parsed:programs AS D_programs,
+        s.D_parsed:records AS D_records,
+
+        s.processedTime
+    FROM STREAM(silver_events_patient_data) s
+)
+KEYS (ID, BusinessID)
+SEQUENCE BY (processedTime)
+STORED AS SCD TYPE 1;
+
+
