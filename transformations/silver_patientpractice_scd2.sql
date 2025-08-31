@@ -1,5 +1,5 @@
 -- ====================================================
--- 1️⃣ Silver PatientPractice SCD2 with safe PERMISSIVE JSON parsing
+-- Silver PatientPractice SCD2 with safe PERMISSIVE JSON parsing
 -- ====================================================
 CREATE OR REFRESH STREAMING TABLE silver_patientpractice_scd2
 (
@@ -11,7 +11,7 @@ CREATE OR REFRESH STREAMING TABLE silver_patientpractice_scd2
   Updated STRING,
   UpdatedBy STRING,
 
-  -- Extracted from D JSON
+  -- Flattened from D JSON
   D_practiceId STRING,
   D_patientId STRING,
   D_referrerId STRING,

@@ -8,7 +8,7 @@ CREATE OR REFRESH STREAMING TABLE silver_patientconnection_scd2
   Shard STRING,
   Updated STRING,
 
-  -- Flattened from D
+  -- Flattened from D JSON
   D_connectionId STRING,
   D_patientId STRING,
   D_status STRING,
@@ -70,6 +70,7 @@ FROM (
     FollowerID,
     Shard,
     Updated,
+    -- Flatten JSON fields
     D_variant:connectionId::string AS D_connectionId,
     D_variant:patientId::string    AS D_patientId,
     D_variant:status::string       AS D_status,
