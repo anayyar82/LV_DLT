@@ -42,16 +42,27 @@
 --       _commit_version,
 --       _commit_timestamp,
 
---       -- -- SAFE triple-encoded JSON parsing with PERMISSIVE mode
---       -- from_json(
---       --   regexp_replace(
---       --     regexp_replace(
---       --       substring(D, 2, length(D)-2),
---       --       '""', '"'
---       --     ),
---       --     '\\\\"', '"'
---       --   )
---       -- ) AS D_variant
+--       -- SAFE triple-encoded JSON parsing with PERMISSIVE mode
+--       from_json(
+--         regexp_replace(
+--           regexp_replace(
+--             substring(D, 2, length(D)-2),
+--             '""', '"'
+--           ),
+--           '\\\\"', '"'
+--         ),
+--         'STRUCT<
+--           connectionId: STRING,
+--           patientId: STRING,
+--           status: STRING,
+--           source: STRING,
+--           created: BIGINT,
+--           createdBy: STRING,
+--           updated: BIGINT,
+--           updatedBy: STRING
+--         >',
+--         map('mode','PERMISSIVE')
+--       ) AS D_variant
 --     FROM STREAM(bronze_patientconnection_cdf)
 --   )
 --   SELECT

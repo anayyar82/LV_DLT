@@ -1,8 +1,6 @@
 -- ====================================================
--- Silver PatientPractice SCD2 with dynamic JSON parsing (fixed schema)
+-- Silver PatientPractice SCD2 with safe PERMISSIVE JSON parsing
 -- ====================================================
-
--- Define the schema inline
 CREATE OR REFRESH STREAMING TABLE silver_patientpractice_scd2
 (
   PatientID STRING,
@@ -13,7 +11,7 @@ CREATE OR REFRESH STREAMING TABLE silver_patientpractice_scd2
   Updated STRING,
   UpdatedBy STRING,
 
-  -- Flattened from D JSON dynamically
+  -- Flattened from D JSON
   D_practiceId STRING,
   D_patientId STRING,
   D_referrerId STRING,
@@ -58,9 +56,17 @@ FROM (
       _commit_version,
       _commit_timestamp,
 
-      -- Use from_json with proper schema
+      -- SAFE triple-encoded JSON parsing into STRUCT
       from_json(
-        D,
+        parse_json(
+          regexp_replace(
+            regexp_replace(
+              substring(D, 2, length(D)-2),
+              '""', '"'
+            ),
+            '\\\\"', '"'
+          )
+        ),
         'STRUCT<
           practiceId: STRING,
           patientId: STRING,
@@ -92,7 +98,7 @@ FROM (
     CreatedBy,
     Updated,
     UpdatedBy,
-    -- Flatten fields dynamically
+    -- Flatten JSON fields
     variant_col:practiceId::STRING   AS D_practiceId,
     variant_col:patientId::STRING    AS D_patientId,
     variant_col:referrerId::STRING   AS D_referrerId,
