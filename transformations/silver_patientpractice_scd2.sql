@@ -1,6 +1,8 @@
 -- ====================================================
--- Silver PatientPractice SCD2 with inline schema in from_json
+-- Silver PatientPractice SCD2 with structured JSON parsing
 -- ====================================================
+
+-- 1️⃣ Create the streaming table
 CREATE OR REFRESH STREAMING TABLE silver_patientpractice_scd2
 (
   PatientID STRING,
@@ -11,7 +13,7 @@ CREATE OR REFRESH STREAMING TABLE silver_patientpractice_scd2
   Updated STRING,
   UpdatedBy STRING,
 
-  -- Flattened from D JSON
+  -- Flattened fields from D JSON
   D_practiceId STRING,
   D_patientId STRING,
   D_referrerId STRING,
@@ -40,51 +42,45 @@ TBLPROPERTIES (
   'quality' = 'silver'
 );
 
--- ====================================================
--- Create Flow with Auto CDC
--- ====================================================
+-- 2️⃣ Define the schema for D column
+CREATE OR REFRESH STREAMING TABLE bronze_patientpractice_cdf_struct AS
+SELECT
+  *,
+  from_json(
+    regexp_replace(
+      regexp_replace(
+        substring(D, 2, length(D)-2),
+        '""', '"'
+      ),
+      '\\\\"', '"'
+    ),
+    'STRUCT<
+      practiceId: STRING,
+      patientId: STRING,
+      referrerId: STRING,
+      name: STRING,
+      address1: STRING,
+      address2: STRING,
+      city: STRING,
+      state: STRING,
+      zipCode: STRING,
+      country: STRING,
+      phoneNumber: STRING,
+      businessId: STRING,
+      anonymous: BOOLEAN,
+      created: BIGINT,
+      createdBy: STRING,
+      updated: BIGINT,
+      updatedBy: STRING
+    >',
+    map('mode','PERMISSIVE')
+  ) AS D_struct
+FROM STREAM(bronze_patientpractice_cdf);
+
+-- 3️⃣ Create the CDC flow
 CREATE FLOW silver_patientpractice_cdc_scd2 AS AUTO CDC INTO
   silver_patientpractice_scd2
 FROM (
-  WITH parsed AS (
-    SELECT
-      PatientID,
-      PracticeID,
-      Shard,
-      Created,
-      CreatedBy,
-      Updated,
-      UpdatedBy,
-      _change_type,
-      _commit_version,
-      _commit_timestamp,
-
-      -- Parse JSON from string column D with inline schema
-      from_json(
-        D,
-        'STRUCT<
-          practiceId: STRING,
-          patientId: STRING,
-          referrerId: STRING,
-          name: STRING,
-          address1: STRING,
-          address2: STRING,
-          city: STRING,
-          state: STRING,
-          zipCode: STRING,
-          country: STRING,
-          phoneNumber: STRING,
-          businessId: STRING,
-          anonymous: BOOLEAN,
-          created: BIGINT,
-          createdBy: STRING,
-          updated: BIGINT,
-          updatedBy: STRING
-        >',
-        map('mode','PERMISSIVE')
-      ) AS D_struct
-    FROM STREAM(bronze_patientpractice_cdf)
-  )
   SELECT
     PatientID,
     PracticeID,
@@ -93,7 +89,8 @@ FROM (
     CreatedBy,
     Updated,
     UpdatedBy,
-    -- Flatten JSON fields
+
+    -- Flatten JSON STRUCT fields
     D_struct:practiceId::STRING   AS D_practiceId,
     D_struct:patientId::STRING    AS D_patientId,
     D_struct:referrerId::STRING   AS D_referrerId,
@@ -116,18 +113,10 @@ FROM (
     _change_type,
     _commit_version,
     _commit_timestamp
-  FROM parsed
+  FROM bronze_patientpractice_cdf_struct
 )
 KEYS (PatientID, PracticeID)
-APPLY AS DELETE WHEN
-  _change_type = "delete"
-SEQUENCE BY
-  (_commit_version, _commit_timestamp)
-COLUMNS * EXCEPT
-  (_change_type, _commit_version, _commit_timestamp)
-STORED AS
-  SCD TYPE 2;
-
-
-
-Cannot resolve "semi_structured_extract_json_multi(D_struct, $.practiceId)" due to data type mismatch: The first parameter requires the "STRING" type, however "D_struct" has the type "STRUCT<practiceId: STRING, patientId: STRING, referrerId: STRING, name: STRING, address1: STRING, address2: STRING, city: STRING, state: STRING, zipCode: STRING, country: STRING, phoneNumber: STRING, businessId: STRING, anonymous: BOOLEAN, created: BIGINT, createdBy: STRING, updated: BIGINT, updatedBy: STRING>".
+APPLY AS DELETE WHEN _change_type = "delete"
+SEQUENCE BY (_commit_version, _commit_timestamp)
+COLUMNS * EXCEPT (_change_type, _commit_version, _commit_timestamp)
+STORED AS SCD TYPE 2;
