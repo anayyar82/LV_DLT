@@ -1,6 +1,17 @@
 -- ====================================================
--- 1️⃣ Silver PatientPractice SCD2 with safe JSON parsing
+-- 1️⃣ Silver PatientPractice SCD2 with safe PERMISSIVE JSON parsing
 -- ====================================================
+
+
+-- Replaced parse_json(...) with from_json(..., map('mode','PERMISSIVE')).
+
+-- Handles malformed or triple-encoded JSON safely, returning NULL for bad rows instead of failing the stream.
+
+-- Flattened all D_variant fields for direct querying.
+
+-- CDC metadata and SCD2 logic unchanged.
+
+
 CREATE OR REFRESH STREAMING TABLE silver_patientpractice_scd2
 (
   PatientID STRING,
@@ -52,22 +63,43 @@ FROM (
       CreatedBy,
       Updated,
       UpdatedBy,
-      -- SAFE triple-encoded JSON parsing
-      parse_json(
+      P,
+      V,
+      ingestTime,
+      _change_type,
+      _commit_version,
+      _commit_timestamp,
+
+      -- SAFE triple-encoded JSON parsing with PERMISSIVE mode
+      from_json(
         regexp_replace(
           regexp_replace(
             substring(D, 2, length(D)-2),
             '""', '"'
           ),
           '\\\\"', '"'
-        )
-      ) AS D_variant,
-      P,
-      V,
-      ingestTime,
-      _change_type,
-      _commit_version,
-      _commit_timestamp
+        ),
+        'STRUCT<
+          practiceId: STRING,
+          patientId: STRING,
+          referrerId: STRING,
+          name: STRING,
+          address1: STRING,
+          address2: STRING,
+          city: STRING,
+          state: STRING,
+          zipCode: STRING,
+          country: STRING,
+          phoneNumber: STRING,
+          businessId: STRING,
+          anonymous: BOOLEAN,
+          created: BIGINT,
+          createdBy: STRING,
+          updated: BIGINT,
+          updatedBy: STRING
+        >',
+        map('mode','PERMISSIVE')
+      ) AS D_variant
     FROM STREAM(bronze_patientpractice_cdf)
   )
   SELECT
@@ -78,25 +110,24 @@ FROM (
     CreatedBy,
     Updated,
     UpdatedBy,
-    D_variant,
-    -- -- Flatten JSON fields
-    -- D_variant:practiceId::string   AS D_practiceId,
-    -- D_variant:patientId::string    AS D_patientId,
-    -- D_variant:referrerId::string   AS D_referrerId,
-    -- D_variant:name::string         AS D_name,
-    -- D_variant:address1::string     AS D_address1,
-    -- D_variant:address2::string     AS D_address2,
-    -- D_variant:city::string         AS D_city,
-    -- D_variant:state::string        AS D_state,
-    -- D_variant:zipCode::string      AS D_zipCode,
-    -- D_variant:country::string      AS D_country,
-    -- D_variant:phoneNumber::string  AS D_phoneNumber,
-    -- D_variant:businessId::string   AS D_businessId,
-    -- D_variant:anonymous::boolean   AS D_anonymous,
-    -- to_timestamp(D_variant:created::bigint)   AS D_created,
-    -- D_variant:createdBy::string    AS D_createdBy,
-    -- to_timestamp(D_variant:updated::bigint)   AS D_updated,
-    -- D_variant:updatedBy::string    AS D_updatedBy,
+    -- Flatten JSON fields
+    D_variant:practiceId::string   AS D_practiceId,
+    D_variant:patientId::string    AS D_patientId,
+    D_variant:referrerId::string   AS D_referrerId,
+    D_variant:name::string         AS D_name,
+    D_variant:address1::string     AS D_address1,
+    D_variant:address2::string     AS D_address2,
+    D_variant:city::string         AS D_city,
+    D_variant:state::string        AS D_state,
+    D_variant:zipCode::string      AS D_zipCode,
+    D_variant:country::string      AS D_country,
+    D_variant:phoneNumber::string  AS D_phoneNumber,
+    D_variant:businessId::string   AS D_businessId,
+    D_variant:anonymous::boolean   AS D_anonymous,
+    to_timestamp(D_variant:created::bigint)   AS D_created,
+    D_variant:createdBy::string    AS D_createdBy,
+    to_timestamp(D_variant:updated::bigint)   AS D_updated,
+    D_variant:updatedBy::string    AS D_updatedBy,
     current_timestamp() AS processedTime,
     _change_type,
     _commit_version,
@@ -112,3 +143,5 @@ COLUMNS * EXCEPT
   (_change_type, _commit_version, _commit_timestamp)
 STORED AS
   SCD TYPE 2;
+
+
