@@ -20,11 +20,15 @@ WITH parsed AS (
     _change_type,
     _commit_version,
     _commit_timestamp,
-    from_json(D, NULL, map(
-      'schemaLocationKey', 'silver_patientpractice_D',
-      'schemaEvolutionMode', 'addNewColumns',
-      'rescuedDataColumn', '_rescued_data'
-    )) AS D_struct
+    -- from_json(D, NULL, map(
+    --   'schemaLocationKey', 'silver_patientpractice_D',
+    --   'schemaEvolutionMode', 'addNewColumns',
+    --   'rescuedDataColumn', '_rescued_data'
+    -- )) AS D_struct
+    D,
+  --from_json(D, NULL, map('schemaLocationKey', 'keyX')) parsedX
+    -- If a new column appears, the pipeline will automatically add it to the schema:
+    parse_json(d) as variant_col
   FROM STREAM(bronze_patientpractice_cdf)
 )
 SELECT
@@ -35,42 +39,25 @@ SELECT
   CreatedBy,
   Updated,
   UpdatedBy,
-  D_struct.practiceId        AS D_practiceId,
-  D_struct.patientId         AS D_patientId,
-  D_struct.referrerId        AS D_referrerId,
-  D_struct.name              AS D_name,
-  D_struct.address1          AS D_address1,
-  D_struct.address2          AS D_address2,
-  D_struct.city              AS D_city,
-  D_struct.state             AS D_state,
-  D_struct.zipCode           AS D_zipCode,
-  D_struct.country           AS D_country,
-  D_struct.phoneNumber       AS D_phoneNumber,
-  D_struct.businessId        AS D_businessId,
-  D_struct.anonymous         AS D_anonymous,
-  to_timestamp(D_struct.created) AS D_created,
-  D_struct.createdBy         AS D_createdBy,
-  to_timestamp(D_struct.updated) AS D_updated,
-  D_struct.updatedBy         AS D_updatedBy,
-  D_struct._rescued_data     AS D_rescued_data,
-  current_timestamp() AS processedTime,
-  _change_type,
-  _commit_version,
-  _commit_timestamp
+  D,
+  variant_col:address1::string as D_address1
+ 
 FROM parsed;
 
 
--- CDC SCD2 flow with proper keys, delete logic, sequencing, and SCD2 storage
-CREATE FLOW silver_patientpractice_cdc_scd2 AS
-  AUTO CDC INTO silver_patientpractice_scd2
-FROM (
-  SELECT * FROM silver_patientpractice_scd2
-)
-KEYS (PatientID, PracticeID)
-APPLY AS DELETE WHEN
-  _change_type = "delete"
-SEQUENCE BY
-  (_commit_version, _commit_timestamp)
-COLUMNS * EXCEPT
-  (_change_type, _commit_version, _commit_timestamp)
-STORED AS SCD TYPE 2;
+-- -- CDC SCD2 flow with proper keys, delete logic, sequencing, and SCD2 storage
+-- CREATE FLOW silver_patientpractice_cdc_scd2 AS
+--   AUTO CDC INTO silver_patientpractice_scd2
+-- FROM (
+--   SELECT * FROM silver_patientpractice_scd2
+-- )
+-- KEYS (PatientID, PracticeID)
+-- APPLY AS DELETE WHEN
+--   _change_type = "delete"
+-- SEQUENCE BY
+--   (_commit_version, _commit_timestamp)
+-- COLUMNS * EXCEPT
+--   (_change_type, _commit_version, _commit_timestamp)
+-- STORED AS SCD TYPE 2;
+
+-- {"address1":"010 Dicki Union","address2":"22025 Marlin Light","anonymous":false,"businessId":"idxdlfxc71","city":"North Nicolas","country":"US","created":1587214191,"createdBy":"17fdc071-8173-11ea-97b7-0242ac110008","name":"practicevjalt6k7","patientId":"17fdc071-8173-11ea-97b7-0242ac110008","phoneNumber":"01653453370","practiceId":"171ecdf0-8173-11ea-97b7-0242ac110008","referrerId":"13f70c75-8173-11ea-844f-0242ac11000b","shard":1836,"state":"Iowa","updated":1587214191,"updatedBy":"17fdc071-8173-11ea-97b7-0242ac110008","zipCode":"02665"}
