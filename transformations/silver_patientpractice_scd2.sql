@@ -132,3 +132,42 @@ COLUMNS * EXCEPT
   (_change_type, _commit_version, _commit_timestamp)
 STORED AS
   SCD TYPE 2;
+
+
+
+
+PatientID
+string
+Shard
+string
+PracticeID
+string
+Created
+string
+CreatedBy
+string
+Updated
+string
+UpdatedBy
+string
+V
+string
+D
+string
+P
+string
+inputFilename
+string
+fullFilePath
+string
+fileMetadata: {"file_path": "string", "file_name": "string", "file_size": "bigint", "file_block_start": "bigint", "file_block_length": "bigint", "file_modification_time": "timestamp"}
+struct
+bronze_prefix
+string
+ingestTime
+timestamp
+ingestDate
+date
+
+
+{"address1":"010 Dicki Union","address2":"22025 Marlin Light","anonymous":false,"businessId":"idxdlfxc71","city":"North Nicolas","country":"US","created":1587214191,"createdBy":"17fdc071-8173-11ea-97b7-0242ac110008","name":"practicevjalt6k7","patientId":"17fdc071-8173-11ea-97b7-0242ac110008","phoneNumber":"01653453370","practiceId":"171ecdf0-8173-11ea-97b7-0242ac110008","referrerId":"13f70c75-8173-11ea-844f-0242ac11000b","shard":1836,"state":"Iowa","updated":1587214191,"updatedBy":"17fdc071-8173-11ea-97b7-0242ac110008","zipCode":"02665"}
