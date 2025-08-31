@@ -1,30 +1,5 @@
 -- ====================================================
--- 1️⃣ Define JSON schema for PatientPractice dynamically
--- ====================================================
-CREATE OR REPLACE TEMPORARY FUNCTION patientpractice_schema() RETURNS STRING
-RETURN '
-STRUCT<
-  practiceId: STRING,
-  patientId: STRING,
-  referrerId: STRING,
-  name: STRING,
-  address1: STRING,
-  address2: STRING,
-  city: STRING,
-  state: STRING,
-  zipCode: STRING,
-  country: STRING,
-  phoneNumber: STRING,
-  businessId: STRING,
-  anonymous: BOOLEAN,
-  created: BIGINT,
-  createdBy: STRING,
-  updated: BIGINT,
-  updatedBy: STRING
->';
-
--- ====================================================
--- 2️⃣ Silver PatientPractice SCD2 with dynamic JSON parsing
+-- Silver PatientPractice SCD2 with inline schema in from_json
 -- ====================================================
 CREATE OR REFRESH STREAMING TABLE silver_patientpractice_scd2
 (
@@ -36,8 +11,7 @@ CREATE OR REFRESH STREAMING TABLE silver_patientpractice_scd2
   Updated STRING,
   UpdatedBy STRING,
 
-  -- Flattened from D JSON dynamically
-  variant_col VARIANT,
+  -- Flattened from D JSON
   D_practiceId STRING,
   D_patientId STRING,
   D_referrerId STRING,
@@ -67,7 +41,7 @@ TBLPROPERTIES (
 );
 
 -- ====================================================
--- 3️⃣ Create Flow with Auto CDC
+-- Create Flow with Auto CDC
 -- ====================================================
 CREATE FLOW silver_patientpractice_cdc_scd2 AS AUTO CDC INTO
   silver_patientpractice_scd2
@@ -85,20 +59,30 @@ FROM (
       _commit_version,
       _commit_timestamp,
 
-      -- Safe triple-encoded JSON parsing with dynamic schema
+      -- Parse JSON from string column D with inline schema
       from_json(
-        parse_json(
-          regexp_replace(
-            regexp_replace(
-              substring(D, 2, length(D)-2),
-              '""', '"'
-            ),
-            '\\\\"', '"'
-          )
-        ),
-        patientpractice_schema(),
-        map("mode", "PERMISSIVE")
-      ) AS variant_col
+        D,
+        'STRUCT<
+          practiceId: STRING,
+          patientId: STRING,
+          referrerId: STRING,
+          name: STRING,
+          address1: STRING,
+          address2: STRING,
+          city: STRING,
+          state: STRING,
+          zipCode: STRING,
+          country: STRING,
+          phoneNumber: STRING,
+          businessId: STRING,
+          anonymous: BOOLEAN,
+          created: BIGINT,
+          createdBy: STRING,
+          updated: BIGINT,
+          updatedBy: STRING
+        >',
+        map('mode','PERMISSIVE')
+      ) AS D_struct
     FROM STREAM(bronze_patientpractice_cdf)
   )
   SELECT
@@ -109,25 +93,24 @@ FROM (
     CreatedBy,
     Updated,
     UpdatedBy,
-    variant_col,
     -- Flatten JSON fields
-    variant_col:practiceId::STRING   AS D_practiceId,
-    variant_col:patientId::STRING    AS D_patientId,
-    variant_col:referrerId::STRING   AS D_referrerId,
-    variant_col:name::STRING         AS D_name,
-    variant_col:address1::STRING     AS D_address1,
-    variant_col:address2::STRING     AS D_address2,
-    variant_col:city::STRING         AS D_city,
-    variant_col:state::STRING        AS D_state,
-    variant_col:zipCode::STRING      AS D_zipCode,
-    variant_col:country::STRING      AS D_country,
-    variant_col:phoneNumber::STRING  AS D_phoneNumber,
-    variant_col:businessId::STRING   AS D_businessId,
-    variant_col:anonymous::BOOLEAN   AS D_anonymous,
-    to_timestamp(variant_col:created::BIGINT)   AS D_created,
-    variant_col:createdBy::STRING    AS D_createdBy,
-    to_timestamp(variant_col:updated::BIGINT)   AS D_updated,
-    variant_col:updatedBy::STRING    AS D_updatedBy,
+    D_struct:practiceId::STRING   AS D_practiceId,
+    D_struct:patientId::STRING    AS D_patientId,
+    D_struct:referrerId::STRING   AS D_referrerId,
+    D_struct:name::STRING         AS D_name,
+    D_struct:address1::STRING     AS D_address1,
+    D_struct:address2::STRING     AS D_address2,
+    D_struct:city::STRING         AS D_city,
+    D_struct:state::STRING        AS D_state,
+    D_struct:zipCode::STRING      AS D_zipCode,
+    D_struct:country::STRING      AS D_country,
+    D_struct:phoneNumber::STRING  AS D_phoneNumber,
+    D_struct:businessId::STRING   AS D_businessId,
+    D_struct:anonymous::BOOLEAN   AS D_anonymous,
+    to_timestamp(D_struct:created::BIGINT)   AS D_created,
+    D_struct:createdBy::STRING    AS D_createdBy,
+    to_timestamp(D_struct:updated::BIGINT)   AS D_updated,
+    D_struct:updatedBy::STRING    AS D_updatedBy,
 
     current_timestamp() AS processedTime,
     _change_type,
