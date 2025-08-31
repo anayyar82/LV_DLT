@@ -53,7 +53,7 @@ FROM (
       UpdatedBy,
       V,
       D,
-      P,
+      from_json(P, 'MAP<STRING, STRING>') as P,
       ingestTime,
       _change_type,
       _commit_version,
@@ -124,8 +124,30 @@ STORED AS
 
 
 
-Query [id = 8aeffb56-0e24-450c-980b-e7a20ab9a84d, runId = 99037b60-826d-4f26-9be7-0b96421aa95c] terminated with exception: [INCOMPATIBLE_COLUMN_TYPE] UNION can only be performed on tables with compatible column types. The 10th column of the second table is "STRING" type which is not compatible with "MAP<STRING, STRING>" at the same column of the first table.. SQLSTATE: 42825;
-'Union false, false
-:- Project [PracticeID#425674, cast(Shard#425675 as string) AS Shard#426242, PatientID#425676, cast(Created#425677 as string) AS Created#426243, CreatedBy#425678, cast(Updated#425679 as string) AS Updated#426244, UpdatedBy#425680, V#425681, D#425682, P#425683, D_created#425684, D_createdBy#425685, D_dateOfBirth#425686, D_firstName#425688, D_lastName#425689, D_patientId#425690, D_practiceId#425691, D_shard#425692, D_updated#425693, D_updatedBy#425694, processedTime#425695, __recordStartAt#425890, __START_AT#425697, __END_AT#425698]
-:  +- Project [PracticeID#425674, Shard#425675, PatientID#425676, Created#425677, CreatedBy#425678, Updated#425679, UpdatedBy#425680, V#425681, D#425682, P#425683, D_created#425684, D_createdBy#425685, D_dateOfBirth#425686, D_firstName#425688, D_lastName#425689, D_patientId#425690, D_practiceId#425691, D_shard#425692, D_updated#425693, D_updatedBy#425694, processedTime#425695, __recordStartAt#425890, __START_AT#425697, __END_AT#425698]
-:     +- Join LeftSemi, ((PatientID#425676 <=> PatientID#426042) AND ((coalesce(__recordStartAt#425890, __END_AT#425698) >= __sequencing#426075) OR isnull(coalesce(__recordStartAt#425890, __END_AT#425698))))
+
+PatientID:string
+Shard:string
+PracticeID:string
+Created:string
+CreatedBy:string
+Updated:string
+UpdatedBy:string
+V:string
+D:string
+P:string
+inputFilename:string
+fullFilePath:string
+fileMetadata:struct
+bronze_prefix:string
+ingestTime:timestamp
+ingestDate:date
+_change_type:string
+_commit_version:long
+_commit_timestamp:timestamp
+
+
+{"address1":"010 Dicki Union","address2":"22025 Marlin Light","anonymous":false,"businessId":"idxdlfxc71","city":"North Nicolas","country":"US","created":1587214191,"createdBy":"17fdc071-8173-11ea-97b7-0242ac110008","name":"practicevjalt6k7","patientId":"17fdc071-8173-11ea-97b7-0242ac110008","phoneNumber":"01653453370","practiceId":"171ecdf0-8173-11ea-97b7-0242ac110008","referrerId":"13f70c75-8173-11ea-844f-0242ac11000b","shard":1836,"state":"Iowa","updated":1587214191,"updatedBy":"17fdc071-8173-11ea-97b7-0242ac110008","zipCode":"02665"}
+
+
+{"171ecdf0-8173-11ea-97b7-0242ac110008":"w","17fdc071-8173-11ea-97b7-0242ac110008":"w"}
+
