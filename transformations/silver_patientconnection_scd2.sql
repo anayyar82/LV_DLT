@@ -1,15 +1,12 @@
 -- ====================================================
--- 2️⃣ Silver PatientConnection SCD2
+-- 2️⃣ Silver PatientConnection SCD2 (aligned with schema)
 -- ====================================================
 CREATE OR REFRESH STREAMING TABLE silver_patientconnection_scd2
 (
   PatientID STRING,
-  ConnectionID STRING,
+  FollowerID STRING,
   Shard STRING,
-  Created STRING,
-  CreatedBy STRING,
   Updated STRING,
-  UpdatedBy STRING,
 
   -- Flattened from D
   D_connectionId STRING,
@@ -38,14 +35,9 @@ FROM (
     SELECT
       PatientID,
       Shard,
-      ConnectionID,
-      Created,
-      CreatedBy,
+      FollowerID,
       Updated,
-      UpdatedBy,
       parse_json(D) AS D_variant,
-      P,
-      V,
       ingestTime,
       _change_type,
       _commit_version,
@@ -54,12 +46,9 @@ FROM (
   )
   SELECT
     PatientID,
+    FollowerID,
     Shard,
-    ConnectionID,
-    Created,
-    CreatedBy,
     Updated,
-    UpdatedBy,
     D_variant:connectionId::string AS D_connectionId,
     D_variant:patientId::string    AS D_patientId,
     D_variant:status::string       AS D_status,
@@ -74,7 +63,7 @@ FROM (
     _commit_timestamp
   FROM parsed
 )
-KEYS (PatientID, ConnectionID)
+KEYS (PatientID, FollowerID)
 APPLY AS DELETE WHEN
   _change_type = "delete"
 SEQUENCE BY
