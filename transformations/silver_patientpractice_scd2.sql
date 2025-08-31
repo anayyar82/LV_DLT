@@ -61,47 +61,31 @@ FROM (
       V,
       D,
       -- Convert P JSON string to MAP<STRING, STRING>
-      from_json(P, 'MAP<STRING, STRING>') AS P,
+      P,
       ingestTime,
       _change_type,
       _commit_version,
       _commit_timestamp,
 
       -- Parse D JSON safely (UTF-16LE → UTF-8, unescape)
-      from_json(
-        regexp_replace(
-          regexp_replace(
-            cast(convert_to(D,'UTF-8') AS STRING),
-            '""', '"'
-          ),
-          '\\\\"', '"'
-        ),
-        'STRUCT<
-          address1: STRING,
-          address2: STRING,
-          anonymous: BOOLEAN,
-          businessId: STRING,
-          city: STRING,
-          country: STRING,
-          created: BIGINT,
-          createdBy: STRING,
-          name: STRING,
-          patientId: STRING,
-          phoneNumber: STRING,
-          practiceId: STRING,
-          referrerId: STRING,
-          shard: INT,
-          state: STRING,
-          updated: BIGINT,
-          updatedBy: STRING,
-          zipCode: STRING
-        >',
-        map(
-          'mode','PERMISSIVE',
-          'rescuedDataColumn','_rescued_data',
-          'schemaEvolutionMode','addNewColumns'
-        )
-      ) AS D_struct
+      from_json(D, 'address1 STRING,
+          address2 STRING,
+          anonymous BOOLEAN,
+          businessId STRING,
+          city STRING,
+          country STRING,
+          created BIGINT,
+          createdBy STRING,
+          name STRING,
+          patientId STRING,
+          phoneNumber STRING,
+          practiceId STRING,
+          referrerId STRING,
+          shard INT,
+          state STRING,
+          updated BIGINT,
+          updatedBy STRING,
+          zipCode STRING' ) AS D_struct
     FROM STREAM(bronze_patientpractice_cdf)
   )
   SELECT
@@ -115,7 +99,7 @@ FROM (
     V,
     D,
     P,
-
+    D_struct,
     -- Flatten D_struct
     D_struct.address1 AS D_address1,
     D_struct.address2 AS D_address2,
@@ -151,3 +135,10 @@ COLUMNS * EXCEPT
   (_change_type, _commit_version, _commit_timestamp)
 STORED AS
   SCD TYPE 2;
+
+
+-- map(
+--           'mode','PERMISSIVE',
+--           'rescuedDataColumn','_rescued_data',
+--           'schemaEvolutionMode','addNewColumns'
+--         )
