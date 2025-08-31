@@ -1,5 +1,5 @@
 -- ====================================================
--- 2️⃣ Silver PatientConnection SCD2 (aligned with schema)
+-- Silver PatientConnection SCD2 with safe JSON parsing
 -- ====================================================
 CREATE OR REFRESH STREAMING TABLE silver_patientconnection_scd2
 (
@@ -37,7 +37,18 @@ FROM (
       Shard,
       FollowerID,
       Updated,
-      parse_json(D) AS D_variant,
+
+      -- SAFE triple-encoded JSON parsing
+      parse_json(
+        regexp_replace(
+          regexp_replace(
+            substring(D, 2, length(D)-2),
+            '""', '"'
+          ),
+          '\\\\"', '"'
+        )
+      ) AS D_variant,
+
       ingestTime,
       _change_type,
       _commit_version,

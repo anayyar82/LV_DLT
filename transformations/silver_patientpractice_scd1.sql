@@ -1,5 +1,5 @@
 -- ====================================================
--- 1️⃣ Silver PatientPractice SCD2
+-- 1️⃣ Silver PatientPractice SCD2 with safe JSON parsing
 -- ====================================================
 CREATE OR REFRESH STREAMING TABLE silver_patientpractice_scd2
 (
@@ -52,8 +52,16 @@ FROM (
       CreatedBy,
       Updated,
       UpdatedBy,
-      -- Parse JSON from D
-      parse_json(D) AS D_variant,
+      -- SAFE triple-encoded JSON parsing
+      parse_json(
+        regexp_replace(
+          regexp_replace(
+            substring(D, 2, length(D)-2),
+            '""', '"'
+          ),
+          '\\\\"', '"'
+        )
+      ) AS D_variant,
       P,
       V,
       ingestTime,
