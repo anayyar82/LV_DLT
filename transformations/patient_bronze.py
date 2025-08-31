@@ -49,14 +49,19 @@ bronze_schema = StructType([
 )
 
 def bronze_events_patient_data():
-    path = "/Volumes/ankurnayyar_cat1/molina_schema/abbot_json_data/"
+    path = "s3://adc-lv-dev-devops.libreview-data-migration/patient-1_Measurement/patient-1_Measurement/*.tsv"
     return (
         spark.readStream.format("cloudFiles")
         .option("cloudFiles.format", "csv")
         .option("sep", "\t")
-        .option("header", "true")
+        .option("header", "false")
+        .option("multiLine", "true")
+        .option("encoding", "UTF-16LE")
+        # .option("cloudFiles.format", "csv")
+        # .option("sep", "\t")
+        # .option("header", "true")
         # .option("cloudFiles.schemaEvolutionMode", "rescue")
-        .option("cloudFiles.schemaLocation", "/Volumes/users/ankur_nayyar/schema")
+        # .option("cloudFiles.schemaLocation", "/Volumes/users/ankur_nayyar/schema")
         .schema(bronze_schema)
         .load(path)
         .withColumn("ingestTime", current_timestamp())
