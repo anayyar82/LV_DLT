@@ -1,5 +1,5 @@
 -- ====================================================
--- Silver Device-Patient SCD2 with AUTO CDC (UTF-16LE JSON handling)
+-- Silver Device-Patient SCD2 with AUTO CDC (UTF-16LE JSON handling) AND UTF 8
 -- ====================================================
 
 -- Step 1: Create or refresh the Silver table
