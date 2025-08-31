@@ -1,8 +1,37 @@
 -- ====================================================
--- Silver PatientPractice SCD2 with structured JSON parsing
+-- 1️⃣ Define the schema for D JSON column
 -- ====================================================
+CREATE OR REFRESH STREAMING TABLE bronze_patientpractice_cdf_struct AS
+SELECT
+  *,
+  from_json(
+    D,
+    'STRUCT<
+      practiceId: STRING,
+      patientId: STRING,
+      referrerId: STRING,
+      name: STRING,
+      address1: STRING,
+      address2: STRING,
+      city: STRING,
+      state: STRING,
+      zipCode: STRING,
+      country: STRING,
+      phoneNumber: STRING,
+      businessId: STRING,
+      anonymous: BOOLEAN,
+      created: BIGINT,
+      createdBy: STRING,
+      updated: BIGINT,
+      updatedBy: STRING
+    >',
+    map('mode', 'PERMISSIVE')
+  ) AS D_struct
+FROM STREAM(bronze_patientpractice_cdf);
 
--- 1️⃣ Create the streaming table
+-- ====================================================
+-- 2️⃣ Create the Silver Table
+-- ====================================================
 CREATE OR REFRESH STREAMING TABLE silver_patientpractice_scd2
 (
   PatientID STRING,
@@ -13,7 +42,7 @@ CREATE OR REFRESH STREAMING TABLE silver_patientpractice_scd2
   Updated STRING,
   UpdatedBy STRING,
 
-  -- Flattened fields from D JSON
+  -- Flattened fields from D_struct
   D_practiceId STRING,
   D_patientId STRING,
   D_referrerId STRING,
@@ -42,42 +71,9 @@ TBLPROPERTIES (
   'quality' = 'silver'
 );
 
--- 2️⃣ Define the schema for D column
-CREATE OR REFRESH STREAMING TABLE bronze_patientpractice_cdf_struct AS
-SELECT
-  *,
-  from_json(
-    regexp_replace(
-      regexp_replace(
-        substring(D, 2, length(D)-2),
-        '""', '"'
-      ),
-      '\\\\"', '"'
-    ),
-    'STRUCT<
-      practiceId: STRING,
-      patientId: STRING,
-      referrerId: STRING,
-      name: STRING,
-      address1: STRING,
-      address2: STRING,
-      city: STRING,
-      state: STRING,
-      zipCode: STRING,
-      country: STRING,
-      phoneNumber: STRING,
-      businessId: STRING,
-      anonymous: BOOLEAN,
-      created: BIGINT,
-      createdBy: STRING,
-      updated: BIGINT,
-      updatedBy: STRING
-    >',
-    map('mode','PERMISSIVE')
-  ) AS D_struct
-FROM STREAM(bronze_patientpractice_cdf);
-
--- 3️⃣ Create the CDC flow
+-- ====================================================
+-- 3️⃣ Create the CDC Flow
+-- ====================================================
 CREATE FLOW silver_patientpractice_cdc_scd2 AS AUTO CDC INTO
   silver_patientpractice_scd2
 FROM (
@@ -90,7 +86,7 @@ FROM (
     Updated,
     UpdatedBy,
 
-    -- Flatten JSON STRUCT fields
+    -- Flatten JSON fields from D_struct
     D_struct:practiceId::STRING   AS D_practiceId,
     D_struct:patientId::STRING    AS D_patientId,
     D_struct:referrerId::STRING   AS D_referrerId,
@@ -104,9 +100,9 @@ FROM (
     D_struct:phoneNumber::STRING  AS D_phoneNumber,
     D_struct:businessId::STRING   AS D_businessId,
     D_struct:anonymous::BOOLEAN   AS D_anonymous,
-    to_timestamp(D_struct:created::BIGINT)   AS D_created,
+    to_timestamp(D_struct:created::BIGINT) AS D_created,
     D_struct:createdBy::STRING    AS D_createdBy,
-    to_timestamp(D_struct:updated::BIGINT)   AS D_updated,
+    to_timestamp(D_struct:updated::BIGINT) AS D_updated,
     D_struct:updatedBy::STRING    AS D_updatedBy,
 
     current_timestamp() AS processedTime,
