@@ -1,5 +1,30 @@
 -- ====================================================
--- Silver PatientPractice SCD2 with safe PERMISSIVE JSON parsing
+-- 1️⃣ Define JSON schema for PatientPractice dynamically
+-- ====================================================
+CREATE OR REPLACE TEMPORARY FUNCTION patientpractice_schema() RETURNS STRING
+RETURN '
+STRUCT<
+  practiceId: STRING,
+  patientId: STRING,
+  referrerId: STRING,
+  name: STRING,
+  address1: STRING,
+  address2: STRING,
+  city: STRING,
+  state: STRING,
+  zipCode: STRING,
+  country: STRING,
+  phoneNumber: STRING,
+  businessId: STRING,
+  anonymous: BOOLEAN,
+  created: BIGINT,
+  createdBy: STRING,
+  updated: BIGINT,
+  updatedBy: STRING
+>';
+
+-- ====================================================
+-- 2️⃣ Silver PatientPractice SCD2 with dynamic JSON parsing
 -- ====================================================
 CREATE OR REFRESH STREAMING TABLE silver_patientpractice_scd2
 (
@@ -11,7 +36,8 @@ CREATE OR REFRESH STREAMING TABLE silver_patientpractice_scd2
   Updated STRING,
   UpdatedBy STRING,
 
-  -- Flattened from D JSON
+  -- Flattened from D JSON dynamically
+  variant_col VARIANT,
   D_practiceId STRING,
   D_patientId STRING,
   D_referrerId STRING,
@@ -40,14 +66,17 @@ TBLPROPERTIES (
   'quality' = 'silver'
 );
 
+-- ====================================================
+-- 3️⃣ Create Flow with Auto CDC
+-- ====================================================
 CREATE FLOW silver_patientpractice_cdc_scd2 AS AUTO CDC INTO
   silver_patientpractice_scd2
 FROM (
   WITH parsed AS (
     SELECT
       PatientID,
-      Shard,
       PracticeID,
+      Shard,
       Created,
       CreatedBy,
       Updated,
@@ -56,8 +85,7 @@ FROM (
       _commit_version,
       _commit_timestamp,
 
-<<<<<<< Updated upstream
-      -- SAFE triple-encoded JSON parsing into STRUCT
+      -- Safe triple-encoded JSON parsing with dynamic schema
       from_json(
         parse_json(
           regexp_replace(
@@ -68,46 +96,21 @@ FROM (
             '\\\\"', '"'
           )
         ),
-        'STRUCT<
-          practiceId: STRING,
-          patientId: STRING,
-          referrerId: STRING,
-          name: STRING,
-          address1: STRING,
-          address2: STRING,
-          city: STRING,
-          state: STRING,
-          zipCode: STRING,
-          country: STRING,
-          phoneNumber: STRING,
-          businessId: STRING,
-          anonymous: BOOLEAN,
-          created: BIGINT,
-          createdBy: STRING,
-          updated: BIGINT,
-          updatedBy: STRING
-        >',
+        patientpractice_schema(),
         map("mode", "PERMISSIVE")
       ) AS variant_col
-=======
-      -- Parse JSON dynamically into VARIANT
-      cast(D AS VARIANT) AS variant_col
->>>>>>> Stashed changes
     FROM STREAM(bronze_patientpractice_cdf)
   )
   SELECT
     PatientID,
-    Shard,
     PracticeID,
+    Shard,
     Created,
     CreatedBy,
     Updated,
     UpdatedBy,
-<<<<<<< Updated upstream
+    variant_col,
     -- Flatten JSON fields
-=======
-    -- Flatten fields dynamically
->>>>>>> Stashed changes
     variant_col:practiceId::STRING   AS D_practiceId,
     variant_col:patientId::STRING    AS D_patientId,
     variant_col:referrerId::STRING   AS D_referrerId,
