@@ -56,6 +56,7 @@ FROM (
       _commit_version,
       _commit_timestamp,
 
+<<<<<<< Updated upstream
       -- SAFE triple-encoded JSON parsing into STRUCT
       from_json(
         parse_json(
@@ -88,6 +89,10 @@ FROM (
         >',
         map("mode", "PERMISSIVE")
       ) AS variant_col
+=======
+      -- Parse JSON dynamically into VARIANT
+      cast(D AS VARIANT) AS variant_col
+>>>>>>> Stashed changes
     FROM STREAM(bronze_patientpractice_cdf)
   )
   SELECT
@@ -98,7 +103,11 @@ FROM (
     CreatedBy,
     Updated,
     UpdatedBy,
+<<<<<<< Updated upstream
     -- Flatten JSON fields
+=======
+    -- Flatten fields dynamically
+>>>>>>> Stashed changes
     variant_col:practiceId::STRING   AS D_practiceId,
     variant_col:patientId::STRING    AS D_patientId,
     variant_col:referrerId::STRING   AS D_referrerId,
