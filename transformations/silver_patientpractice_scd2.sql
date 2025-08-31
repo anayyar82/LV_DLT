@@ -1,143 +1,130 @@
 -- ====================================================
--- SILVER PatientPractice SCD2 using AUTO CDC
+-- Silver Device-Patient SCD2 with AUTO CDC and explicit schema
 -- ====================================================
 
--- Step 1: Stage table - parse JSON into struct with schema evolution
-CREATE OR REFRESH STREAMING LIVE TABLE silver_patientpractice_scd2
-AS
-SELECT
-    PatientID,
-    PracticeID,
-    Shard,
-    Created,
-    CreatedBy,
-    Updated,
-    UpdatedBy,
+-- Step 1: Create or refresh the Silver table
+CREATE OR REFRESH STREAMING TABLE silver_device_patient_scd2
+(
+  PracticeID STRING,
+  Shard INT,
+  DeviceTypeID INT,
+  SerialNumber STRING,
+  PatientID STRING,
+  Created TIMESTAMP,
+  CreatedBy STRING,
+  Updated TIMESTAMP,
+  UpdatedBy STRING,
+  V STRING,
+  D STRING,  -- Original JSON string
+  P MAP<STRING, STRING>,
 
-    -- Parse JSON column D
-    FROM_JSON(
-        D,
-        'STRUCT<
-            address1: STRING,
-            address2: STRING,
-            anonymous: BOOLEAN,
-            businessId: STRING,
-            city: STRING,
-            country: STRING,
-            created: BIGINT,
-            createdBy: STRING,
-            name: STRING,
-            patientId: STRING,
-            phoneNumber: STRING,
-            practiceId: STRING,
-            referrerId: STRING,
-            shard: BIGINT,
-            state: STRING,
-            updated: BIGINT,
-            updatedBy: STRING,
-            zipCode: STRING
-        >',
-        MAP(
-            'mode', 'PERMISSIVE',
-            'rescuedDataColumn', '_rescued_data',
-            'schemaEvolutionMode', 'addNewColumns',
-            'schemaLocationKey', 'silver_patientpractice_D'
-        )
-    ) AS D_struct
-FROM LIVE.bronze_patientpractice_cdf;
+  -- Flattened fields from D
+  D_created TIMESTAMP,
+  D_createdBy STRING,
+  D_dateOfBirth TIMESTAMP,
+  D_deviceTypeId INT,
+  D_firstName STRING,
+  D_lastName STRING,
+  D_patientId STRING,
+  D_practiceId STRING,
+  D_serialNumber STRING,
+  D_shard INT,
+  D_updated TIMESTAMP,
+  D_updatedBy STRING,
 
--- ====================================================
--- Silver PatientPractice SCD2 with AUTO CDC
--- ====================================================
+  processedTime TIMESTAMP
+)
+TBLPROPERTIES (
+  'delta.enableChangeDataFeed' = 'true',
+  'delta.enableDeletionVectors' = 'true',
+  'delta.enableRowTracking' = 'true',
+  'quality' = 'silver'
+);
 
--- Step 1: Create the CDC Flow
-CREATE FLOW silver_patientpractice_cdc_scd2 AS AUTO CDC INTO
-  silver_patientpractice_scd2
+-- Step 2: Create CDC flow
+CREATE FLOW silver_device_patient_cdc_scd2 AS AUTO CDC INTO
+  silver_device_patient_scd2
 FROM (
   WITH parsed AS (
     SELECT
-      PatientID,
       PracticeID,
       Shard,
+      DeviceTypeID,
+      SerialNumber,
+      PatientID,
       Created,
       CreatedBy,
       Updated,
       UpdatedBy,
+      V,
+      D,
+      P,
+      ingestTime,
       _change_type,
       _commit_version,
       _commit_timestamp,
 
-      -- SAFE JSON parsing with PERMISSIVE mode and schema evolution
+      -- Parse JSON D using PERMISSIVE mode
       from_json(
         D,
         'STRUCT<
-          address1: STRING,
-          address2: STRING,
-          anonymous: BOOLEAN,
-          businessId: STRING,
-          city: STRING,
-          country: STRING,
           created: BIGINT,
           createdBy: STRING,
-          name: STRING,
+          dateOfBirth: BIGINT,
+          deviceTypeId: INT,
+          firstName: STRING,
+          lastName: STRING,
           patientId: STRING,
-          phoneNumber: STRING,
           practiceId: STRING,
-          referrerId: STRING,
-          shard: BIGINT,
-          state: STRING,
+          serialNumber: STRING,
+          shard: INT,
           updated: BIGINT,
-          updatedBy: STRING,
-          zipCode: STRING
+          updatedBy: STRING
         >',
         map(
-          'mode', 'PERMISSIVE',
-          'rescuedDataColumn', '_rescued_data',
-          'schemaEvolutionMode', 'addNewColumns',
-          'schemaLocationKey', 'silver_patientpractice_D'
+          'mode','PERMISSIVE',
+          'rescuedDataColumn','_rescued_data',
+          'schemaEvolutionMode','addNewColumns',
+          'schemaLocationKey','silver_device_patient_D'
         )
       ) AS D_struct
-    FROM STREAM(bronze_patientpractice_cdf)
+    FROM STREAM(bronze_device_patient_cdf)
   )
   SELECT
-    PatientID,
     PracticeID,
     Shard,
+    DeviceTypeID,
+    SerialNumber,
+    PatientID,
     Created,
     CreatedBy,
     Updated,
     UpdatedBy,
+    V,
+    D,
+    P,
 
-    -- Flatten JSON fields from D_struct
-    D_struct.practiceId    AS D_practiceId,
-    D_struct.patientId     AS D_patientId,
-    D_struct.referrerId    AS D_referrerId,
-    D_struct.name          AS D_name,
-    D_struct.address1      AS D_address1,
-    D_struct.address2      AS D_address2,
-    D_struct.city          AS D_city,
-    D_struct.state         AS D_state,
-    D_struct.zipCode       AS D_zipCode,
-    D_struct.country       AS D_country,
-    D_struct.phoneNumber   AS D_phoneNumber,
-    D_struct.businessId    AS D_businessId,
-    D_struct.anonymous     AS D_anonymous,
+    -- Flatten D_struct
     to_timestamp(D_struct.created) AS D_created,
-    D_struct.createdBy     AS D_createdBy,
+    D_struct.createdBy AS D_createdBy,
+    to_timestamp(D_struct.dateOfBirth) AS D_dateOfBirth,
+    D_struct.deviceTypeId AS D_deviceTypeId,
+    D_struct.firstName AS D_firstName,
+    D_struct.lastName AS D_lastName,
+    D_struct.patientId AS D_patientId,
+    D_struct.practiceId AS D_practiceId,
+    D_struct.serialNumber AS D_serialNumber,
+    D_struct.shard AS D_shard,
     to_timestamp(D_struct.updated) AS D_updated,
-    D_struct.updatedBy     AS D_updatedBy,
-    D_struct._rescued_data AS D_rescued_data,
+    D_struct.updatedBy AS D_updatedBy,
 
-    -- Optional: track processing time
     current_timestamp() AS processedTime,
-
-    -- Keep CDC metadata
     _change_type,
     _commit_version,
     _commit_timestamp
   FROM parsed
 )
-KEYS (PatientID, PracticeID)
+KEYS (PatientID, SerialNumber)
 APPLY AS DELETE WHEN
   _change_type = "delete"
 SEQUENCE BY
@@ -146,4 +133,3 @@ COLUMNS * EXCEPT
   (_change_type, _commit_version, _commit_timestamp)
 STORED AS
   SCD TYPE 2;
-
