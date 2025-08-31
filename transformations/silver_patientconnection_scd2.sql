@@ -1,86 +1,86 @@
--- ====================================================
--- Silver PatientConnection SCD2 with safe JSON parsing
--- ====================================================
-CREATE OR REFRESH STREAMING TABLE silver_patientconnection_scd2
-(
-  PatientID STRING,
-  FollowerID STRING,
-  Shard STRING,
-  Updated STRING,
+-- -- ====================================================
+-- -- Silver PatientConnection SCD2 with safe JSON parsing
+-- -- ====================================================
+-- CREATE OR REFRESH STREAMING TABLE silver_patientconnection_scd2
+-- (
+--   PatientID STRING,
+--   FollowerID STRING,
+--   Shard STRING,
+--   Updated STRING,
 
-  -- Flattened from D
-  -- D_connectionId STRING,
-  -- D_patientId STRING,
-  -- D_status STRING,
-  -- D_source STRING,
-  -- D_created TIMESTAMP,
-  -- D_createdBy STRING,
-  -- D_updated TIMESTAMP,
-  -- D_updatedBy STRING,
+--   -- Flattened from D
+--   -- D_connectionId STRING,
+--   -- D_patientId STRING,
+--   -- D_status STRING,
+--   -- D_source STRING,
+--   -- D_created TIMESTAMP,
+--   -- D_createdBy STRING,
+--   -- D_updated TIMESTAMP,
+--   -- D_updatedBy STRING,
 
-  processedTime TIMESTAMP
-)
-TBLPROPERTIES (
-  'delta.enableChangeDataFeed' = 'true',
-  'delta.enableDeletionVectors' = 'true',
-  'delta.enableRowTracking' = 'true',
-  'delta.feature.variantType-preview' = 'supported',
-  'quality' = 'silver'
-);
+--   processedTime TIMESTAMP
+-- )
+-- TBLPROPERTIES (
+--   'delta.enableChangeDataFeed' = 'true',
+--   'delta.enableDeletionVectors' = 'true',
+--   'delta.enableRowTracking' = 'true',
+--   'delta.feature.variantType-preview' = 'supported',
+--   'quality' = 'silver'
+-- );
 
-CREATE FLOW silver_patientconnection_cdc_scd2 AS AUTO CDC INTO
-  silver_patientconnection_scd2
-FROM (
-  WITH parsed AS (
-    SELECT
-      PatientID,
-      Shard,
-      FollowerID,
-      Updated,
+-- CREATE FLOW silver_patientconnection_cdc_scd2 AS AUTO CDC INTO
+--   silver_patientconnection_scd2
+-- FROM (
+--   WITH parsed AS (
+--     SELECT
+--       PatientID,
+--       Shard,
+--       FollowerID,
+--       Updated,
 
-      -- SAFE triple-encoded JSON parsing
-      parse_json(
-        regexp_replace(
-          regexp_replace(
-            substring(D, 2, length(D)-2),
-            '""', '"'
-          ),
-          '\\\\"', '"'
-        )
-      ) AS D_variant,
+--       -- SAFE triple-encoded JSON parsing
+--       parse_json(
+--         regexp_replace(
+--           regexp_replace(
+--             substring(D, 2, length(D)-2),
+--             '""', '"'
+--           ),
+--           '\\\\"', '"'
+--         )
+--       ) AS D_variant,
 
-      ingestTime,
-      _change_type,
-      _commit_version,
-      _commit_timestamp
-    FROM STREAM(bronze_patientconnection_cdf)
-  )
-  SELECT
-    PatientID,
-    FollowerID,
-    Shard,
-    Updated,
-    D_variant,
-    -- D_variant:connectionId::string AS D_connectionId,
-    -- D_variant:patientId::string    AS D_patientId,
-    -- D_variant:status::string       AS D_status,
-    -- D_variant:source::string       AS D_source,
-    -- to_timestamp(D_variant:created::bigint)   AS D_created,
-    -- D_variant:createdBy::string    AS D_createdBy,
-    -- to_timestamp(D_variant:updated::bigint)   AS D_updated,
-    -- D_variant:updatedBy::string    AS D_updatedBy,
-    current_timestamp() AS processedTime,
-    _change_type,
-    _commit_version,
-    _commit_timestamp
-  FROM parsed
-)
-KEYS (PatientID, FollowerID)
-APPLY AS DELETE WHEN
-  _change_type = "delete"
-SEQUENCE BY
-  (_commit_version, _commit_timestamp)
-COLUMNS * EXCEPT
-  (_change_type, _commit_version, _commit_timestamp)
-STORED AS
-  SCD TYPE 2;
+--       ingestTime,
+--       _change_type,
+--       _commit_version,
+--       _commit_timestamp
+--     FROM STREAM(bronze_patientconnection_cdf)
+--   )
+--   SELECT
+--     PatientID,
+--     FollowerID,
+--     Shard,
+--     Updated,
+--     D_variant,
+--     -- D_variant:connectionId::string AS D_connectionId,
+--     -- D_variant:patientId::string    AS D_patientId,
+--     -- D_variant:status::string       AS D_status,
+--     -- D_variant:source::string       AS D_source,
+--     -- to_timestamp(D_variant:created::bigint)   AS D_created,
+--     -- D_variant:createdBy::string    AS D_createdBy,
+--     -- to_timestamp(D_variant:updated::bigint)   AS D_updated,
+--     -- D_variant:updatedBy::string    AS D_updatedBy,
+--     current_timestamp() AS processedTime,
+--     _change_type,
+--     _commit_version,
+--     _commit_timestamp
+--   FROM parsed
+-- )
+-- KEYS (PatientID, FollowerID)
+-- APPLY AS DELETE WHEN
+--   _change_type = "delete"
+-- SEQUENCE BY
+--   (_commit_version, _commit_timestamp)
+-- COLUMNS * EXCEPT
+--   (_change_type, _commit_version, _commit_timestamp)
+-- STORED AS
+--   SCD TYPE 2;
