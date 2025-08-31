@@ -1,51 +1,14 @@
--- ====================================================
--- Silver PatientPractice SCD2 using semi_structured_extract_json_multi
--- ====================================================
-
--- Create or refresh the Silver table
+-- Create or refresh the streaming Silver table.
 CREATE OR REFRESH STREAMING TABLE silver_patientpractice_scd2
-(
-  PatientID STRING,
-  PracticeID STRING,
-  Shard STRING,
-  Created STRING,
-  CreatedBy STRING,
-  Updated STRING,
-  UpdatedBy STRING,
-
-  -- Flattened fields from D JSON
-  D_practiceId STRING,
-  D_patientId STRING,
-  D_referrerId STRING,
-  D_name STRING,
-  D_address1 STRING,
-  D_address2 STRING,
-  D_city STRING,
-  D_state STRING,
-  D_zipCode STRING,
-  D_country STRING,
-  D_phoneNumber STRING,
-  D_businessId STRING,
-  D_anonymous BOOLEAN,
-  D_created TIMESTAMP,
-  D_createdBy STRING,
-  D_updated TIMESTAMP,
-  D_updatedBy STRING,
-
-  processedTime TIMESTAMP
-)
 TBLPROPERTIES (
   'delta.enableChangeDataFeed' = 'true',
   'delta.enableDeletionVectors' = 'true',
   'delta.enableRowTracking' = 'true',
   'delta.feature.variantType-preview' = 'supported',
   'quality' = 'silver'
-);
+) AS
 
--- Create the CDC Flow
-CREATE FLOW silver_patientpractice_cdc_scd2 AS AUTO CDC INTO
-  silver_patientpractice_scd2
-FROM (
+WITH parsed AS (
   SELECT
     PatientID,
     PracticeID,
@@ -54,38 +17,52 @@ FROM (
     CreatedBy,
     Updated,
     UpdatedBy,
-    
-    -- Extract JSON fields from D string
-    semi_structured_extract_json_multi(D, '$.practiceId')     AS D_practiceId,
-    semi_structured_extract_json_multi(D, '$.patientId')      AS D_patientId,
-    semi_structured_extract_json_multi(D, '$.referrerId')     AS D_referrerId,
-    semi_structured_extract_json_multi(D, '$.name')           AS D_name,
-    semi_structured_extract_json_multi(D, '$.address1')       AS D_address1,
-    semi_structured_extract_json_multi(D, '$.address2')       AS D_address2,
-    semi_structured_extract_json_multi(D, '$.city')           AS D_city,
-    semi_structured_extract_json_multi(D, '$.state')          AS D_state,
-    semi_structured_extract_json_multi(D, '$.zipCode')        AS D_zipCode,
-    semi_structured_extract_json_multi(D, '$.country')        AS D_country,
-    semi_structured_extract_json_multi(D, '$.phoneNumber')    AS D_phoneNumber,
-    semi_structured_extract_json_multi(D, '$.businessId')     AS D_businessId,
-    cast(semi_structured_extract_json_multi(D, '$.anonymous') AS BOOLEAN) AS D_anonymous,
-    to_timestamp(cast(semi_structured_extract_json_multi(D, '$.created') AS BIGINT)) AS D_created,
-    semi_structured_extract_json_multi(D, '$.createdBy')      AS D_createdBy,
-    to_timestamp(cast(semi_structured_extract_json_multi(D, '$.updated') AS BIGINT)) AS D_updated,
-    semi_structured_extract_json_multi(D, '$.updatedBy')      AS D_updatedBy,
-
-    current_timestamp() AS processedTime,
     _change_type,
     _commit_version,
-    _commit_timestamp
+    _commit_timestamp,
+    -- Schema inference with evolution: let Lakeflow infer D_struct
+    from_json(D, NULL, map(
+      'schemaLocationKey', 'silver_patientpractice_D',
+      'schemaEvolutionMode', 'addNewColumns',
+      'rescuedDataColumn', '_rescued_data'
+      -- Optionally: ,'schemaHints', '<your_hints>'
+    )) AS D_struct
   FROM STREAM(bronze_patientpractice_cdf)
 )
-KEYS (PatientID, PracticeID)
-APPLY AS DELETE WHEN
-  _change_type = "delete"
-SEQUENCE BY
-  (_commit_version, _commit_timestamp)
-COLUMNS * EXCEPT
-  (_change_type, _commit_version, _commit_timestamp)
-STORED AS
-  SCD TYPE 2;
+
+SELECT
+  PatientID,
+  PracticeID,
+  Shard,
+  Created,
+  CreatedBy,
+  Updated,
+  UpdatedBy,
+
+  -- Flatten known/important fields, fallback for others.
+  D_struct.practiceId        AS D_practiceId,
+  D_struct.patientId         AS D_patientId,
+  D_struct.referrerId        AS D_referrerId,
+  D_struct.name              AS D_name,
+  D_struct.address1          AS D_address1,
+  D_struct.address2          AS D_address2,
+  D_struct.city              AS D_city,
+  D_struct.state             AS D_state,
+  D_struct.zipCode           AS D_zipCode,
+  D_struct.country           AS D_country,
+  D_struct.phoneNumber       AS D_phoneNumber,
+  D_struct.businessId        AS D_businessId,
+  D_struct.anonymous         AS D_anonymous,
+  to_timestamp(D_struct.created) AS D_created,
+  D_struct.createdBy         AS D_createdBy,
+  to_timestamp(D_struct.updated) AS D_updated,
+  D_struct.updatedBy         AS D_updatedBy,
+  D_struct._rescued_data     AS D_rescued_data,
+
+  current_timestamp() AS processedTime,
+
+  _change_type,
+  _commit_version,
+  _commit_timestamp
+
+FROM parsed
