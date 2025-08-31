@@ -7,8 +7,6 @@ CREATE OR REFRESH STREAMING TABLE silver_device_patient_scd2
 (
   PracticeID STRING,
   Shard INT,
-  DeviceTypeID INT,
-  SerialNumber STRING,
   PatientID STRING,
   Created TIMESTAMP,
   CreatedBy STRING,
@@ -27,7 +25,6 @@ CREATE OR REFRESH STREAMING TABLE silver_device_patient_scd2
   D_lastName STRING,
   D_patientId STRING,
   D_practiceId STRING,
-  D_serialNumber STRING,
   D_shard INT,
   D_updated TIMESTAMP,
   D_updatedBy STRING,
@@ -49,8 +46,6 @@ FROM (
     SELECT
       PracticeID,
       Shard,
-      DeviceTypeID,
-      SerialNumber,
       PatientID,
       Created,
       CreatedBy,
@@ -71,12 +66,10 @@ FROM (
           created: BIGINT,
           createdBy: STRING,
           dateOfBirth: BIGINT,
-          deviceTypeId: INT,
           firstName: STRING,
           lastName: STRING,
           patientId: STRING,
           practiceId: STRING,
-          serialNumber: STRING,
           shard: INT,
           updated: BIGINT,
           updatedBy: STRING
@@ -84,17 +77,14 @@ FROM (
         map(
           'mode','PERMISSIVE',
           'rescuedDataColumn','_rescued_data',
-          'schemaEvolutionMode','addNewColumns',
-          'schemaLocationKey','silver_device_patient_D'
-        )
+          'schemaEvolutionMode','addNewColumns'
+          )
       ) AS D_struct
-    FROM STREAM(bronze_device_patient_cdf)
+    FROM STREAM(bronze_patientpractice_cdf)
   )
   SELECT
     PracticeID,
     Shard,
-    DeviceTypeID,
-    SerialNumber,
     PatientID,
     Created,
     CreatedBy,
@@ -108,12 +98,10 @@ FROM (
     to_timestamp(D_struct.created) AS D_created,
     D_struct.createdBy AS D_createdBy,
     to_timestamp(D_struct.dateOfBirth) AS D_dateOfBirth,
-    D_struct.deviceTypeId AS D_deviceTypeId,
     D_struct.firstName AS D_firstName,
     D_struct.lastName AS D_lastName,
     D_struct.patientId AS D_patientId,
     D_struct.practiceId AS D_practiceId,
-    D_struct.serialNumber AS D_serialNumber,
     D_struct.shard AS D_shard,
     to_timestamp(D_struct.updated) AS D_updated,
     D_struct.updatedBy AS D_updatedBy,
@@ -124,7 +112,7 @@ FROM (
     _commit_timestamp
   FROM parsed
 )
-KEYS (PatientID, SerialNumber)
+KEYS (PatientID)
 APPLY AS DELETE WHEN
   _change_type = "delete"
 SEQUENCE BY
@@ -133,3 +121,11 @@ COLUMNS * EXCEPT
   (_change_type, _commit_version, _commit_timestamp)
 STORED AS
   SCD TYPE 2;
+
+
+
+Query [id = 8aeffb56-0e24-450c-980b-e7a20ab9a84d, runId = 99037b60-826d-4f26-9be7-0b96421aa95c] terminated with exception: [INCOMPATIBLE_COLUMN_TYPE] UNION can only be performed on tables with compatible column types. The 10th column of the second table is "STRING" type which is not compatible with "MAP<STRING, STRING>" at the same column of the first table.. SQLSTATE: 42825;
+'Union false, false
+:- Project [PracticeID#425674, cast(Shard#425675 as string) AS Shard#426242, PatientID#425676, cast(Created#425677 as string) AS Created#426243, CreatedBy#425678, cast(Updated#425679 as string) AS Updated#426244, UpdatedBy#425680, V#425681, D#425682, P#425683, D_created#425684, D_createdBy#425685, D_dateOfBirth#425686, D_firstName#425688, D_lastName#425689, D_patientId#425690, D_practiceId#425691, D_shard#425692, D_updated#425693, D_updatedBy#425694, processedTime#425695, __recordStartAt#425890, __START_AT#425697, __END_AT#425698]
+:  +- Project [PracticeID#425674, Shard#425675, PatientID#425676, Created#425677, CreatedBy#425678, Updated#425679, UpdatedBy#425680, V#425681, D#425682, P#425683, D_created#425684, D_createdBy#425685, D_dateOfBirth#425686, D_firstName#425688, D_lastName#425689, D_patientId#425690, D_practiceId#425691, D_shard#425692, D_updated#425693, D_updatedBy#425694, processedTime#425695, __recordStartAt#425890, __START_AT#425697, __END_AT#425698]
+:     +- Join LeftSemi, ((PatientID#425676 <=> PatientID#426042) AND ((coalesce(__recordStartAt#425890, __END_AT#425698) >= __sequencing#426075) OR isnull(coalesce(__recordStartAt#425890, __END_AT#425698))))
