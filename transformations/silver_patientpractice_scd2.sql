@@ -1,8 +1,8 @@
 -- ====================================================
--- Silver PatientPractice SCD2 with safe parse_json(D string)
+-- Silver PatientPractice SCD2 using semi_structured_extract_json_multi
 -- ====================================================
 
--- Create the Silver table
+-- Create or refresh the Silver table
 CREATE OR REFRESH STREAMING TABLE silver_patientpractice_scd2
 (
   PatientID STRING,
@@ -13,7 +13,7 @@ CREATE OR REFRESH STREAMING TABLE silver_patientpractice_scd2
   Updated STRING,
   UpdatedBy STRING,
 
-  -- Flattened from D JSON
+  -- Flattened fields from D JSON
   D_practiceId STRING,
   D_patientId STRING,
   D_referrerId STRING,
@@ -46,44 +46,6 @@ TBLPROPERTIES (
 CREATE FLOW silver_patientpractice_cdc_scd2 AS AUTO CDC INTO
   silver_patientpractice_scd2
 FROM (
-  WITH parsed AS (
-    SELECT
-      PatientID,
-      PracticeID,
-      Shard,
-      Created,
-      CreatedBy,
-      Updated,
-      UpdatedBy,
-      _change_type,
-      _commit_version,
-      _commit_timestamp,
-
-      -- Safely parse JSON string into STRUCT
-      from_json(D, 
-        'STRUCT<
-          practiceId: STRING,
-          patientId: STRING,
-          referrerId: STRING,
-          name: STRING,
-          address1: STRING,
-          address2: STRING,
-          city: STRING,
-          state: STRING,
-          zipCode: STRING,
-          country: STRING,
-          phoneNumber: STRING,
-          businessId: STRING,
-          anonymous: BOOLEAN,
-          created: BIGINT,
-          createdBy: STRING,
-          updated: BIGINT,
-          updatedBy: STRING
-        >',
-        map('mode','PERMISSIVE')
-      ) AS D_struct
-    FROM STREAM(bronze_patientpractice_cdf)
-  )
   SELECT
     PatientID,
     PracticeID,
@@ -92,31 +54,31 @@ FROM (
     CreatedBy,
     Updated,
     UpdatedBy,
-
-    -- Flatten STRUCT fields
-    D_struct:practiceId        AS D_practiceId,
-    D_struct:patientId         AS D_patientId,
-    D_struct:referrerId        AS D_referrerId,
-    D_struct:name              AS D_name,
-    D_struct:address1          AS D_address1,
-    D_struct:address2          AS D_address2,
-    D_struct:city              AS D_city,
-    D_struct:state             AS D_state,
-    D_struct:zipCode           AS D_zipCode,
-    D_struct:country           AS D_country,
-    D_struct:phoneNumber       AS D_phoneNumber,
-    D_struct:businessId        AS D_businessId,
-    D_struct:anonymous         AS D_anonymous,
-    to_timestamp(D_struct:created) AS D_created,
-    D_struct:createdBy         AS D_createdBy,
-    to_timestamp(D_struct:updated) AS D_updated,
-    D_struct:updatedBy         AS D_updatedBy,
+    
+    -- Extract JSON fields from D string
+    semi_structured_extract_json_multi(D, '$.practiceId')     AS D_practiceId,
+    semi_structured_extract_json_multi(D, '$.patientId')      AS D_patientId,
+    semi_structured_extract_json_multi(D, '$.referrerId')     AS D_referrerId,
+    semi_structured_extract_json_multi(D, '$.name')           AS D_name,
+    semi_structured_extract_json_multi(D, '$.address1')       AS D_address1,
+    semi_structured_extract_json_multi(D, '$.address2')       AS D_address2,
+    semi_structured_extract_json_multi(D, '$.city')           AS D_city,
+    semi_structured_extract_json_multi(D, '$.state')          AS D_state,
+    semi_structured_extract_json_multi(D, '$.zipCode')        AS D_zipCode,
+    semi_structured_extract_json_multi(D, '$.country')        AS D_country,
+    semi_structured_extract_json_multi(D, '$.phoneNumber')    AS D_phoneNumber,
+    semi_structured_extract_json_multi(D, '$.businessId')     AS D_businessId,
+    cast(semi_structured_extract_json_multi(D, '$.anonymous') AS BOOLEAN) AS D_anonymous,
+    to_timestamp(cast(semi_structured_extract_json_multi(D, '$.created') AS BIGINT)) AS D_created,
+    semi_structured_extract_json_multi(D, '$.createdBy')      AS D_createdBy,
+    to_timestamp(cast(semi_structured_extract_json_multi(D, '$.updated') AS BIGINT)) AS D_updated,
+    semi_structured_extract_json_multi(D, '$.updatedBy')      AS D_updatedBy,
 
     current_timestamp() AS processedTime,
     _change_type,
     _commit_version,
     _commit_timestamp
-  FROM parsed
+  FROM STREAM(bronze_patientpractice_cdf)
 )
 KEYS (PatientID, PracticeID)
 APPLY AS DELETE WHEN
@@ -127,7 +89,3 @@ COLUMNS * EXCEPT
   (_change_type, _commit_version, _commit_timestamp)
 STORED AS
   SCD TYPE 2;
-
-
-  Cannot resolve "semi_structured_extract_json_multi(D_struct, $.practiceId)" due to data type mismatch: The first parameter requires the "STRING" type, however "D_struct" has the type "STRUCT<practiceId: STRING, patientId: STRING, referrerId: STRING, name: STRING, address1: STRING, address2: STRING, city: STRING, state: STRING, zipCode: STRING, country: STRING, phoneNumber: STRING, businessId: STRING, anonymous: BOOLEAN, created: BIGINT, createdBy: STRING, updated: BIGINT, updatedBy: STRING>".
-
