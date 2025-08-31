@@ -135,4 +135,4 @@ SEQUENCE BY
 COLUMNS * EXCEPT
   (_change_type, _commit_version, _commit_timestamp)
 STORED AS
-  SCD TYPE 2;
+  SCD TYPE 1;
