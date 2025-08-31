@@ -127,3 +127,7 @@ COLUMNS * EXCEPT
   (_change_type, _commit_version, _commit_timestamp)
 STORED AS
   SCD TYPE 2;
+
+
+  Cannot resolve "semi_structured_extract_json_multi(D_struct, $.practiceId)" due to data type mismatch: The first parameter requires the "STRING" type, however "D_struct" has the type "STRUCT<practiceId: STRING, patientId: STRING, referrerId: STRING, name: STRING, address1: STRING, address2: STRING, city: STRING, state: STRING, zipCode: STRING, country: STRING, phoneNumber: STRING, businessId: STRING, anonymous: BOOLEAN, created: BIGINT, createdBy: STRING, updated: BIGINT, updatedBy: STRING>".
+
