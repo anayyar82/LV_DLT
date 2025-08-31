@@ -1,5 +1,5 @@
 -- ====================================================
--- Silver PatientPractice SCD2 with safe PERMISSIVE JSON parsing
+-- Silver PatientPractice SCD2 with dynamic JSON parsing
 -- ====================================================
 CREATE OR REFRESH STREAMING TABLE silver_patientpractice_scd2
 (
@@ -11,7 +11,8 @@ CREATE OR REFRESH STREAMING TABLE silver_patientpractice_scd2
   Updated STRING,
   UpdatedBy STRING,
 
-  -- Flattened from D JSON
+  -- Flattened from D JSON dynamically
+  variant_col VARIANT,
   D_practiceId STRING,
   D_patientId STRING,
   D_referrerId STRING,
@@ -52,37 +53,12 @@ FROM (
       CreatedBy,
       Updated,
       UpdatedBy,
-      P,
-      V,
-      ingestTime,
       _change_type,
       _commit_version,
       _commit_timestamp,
 
-      -- SAFE PERMISSIVE JSON parsing of D column as STRUCT
-      from_json(
-        D,
-        'STRUCT<
-          practiceId: STRING,
-          patientId: STRING,
-          referrerId: STRING,
-          name: STRING,
-          address1: STRING,
-          address2: STRING,
-          city: STRING,
-          state: STRING,
-          zipCode: STRING,
-          country: STRING,
-          phoneNumber: STRING,
-          businessId: STRING,
-          anonymous: BOOLEAN,
-          created: BIGINT,
-          createdBy: STRING,
-          updated: BIGINT,
-          updatedBy: STRING
-        >',
-        map('mode','PERMISSIVE')
-      ) AS D_variant
+      -- Parse JSON dynamically into VARIANT
+      from_json(D) AS variant_col
     FROM STREAM(bronze_patientpractice_cdf)
   )
   SELECT
@@ -93,25 +69,25 @@ FROM (
     CreatedBy,
     Updated,
     UpdatedBy,
-
-    -- Flatten JSON STRUCT fields
-    D_variant:practiceId::string   AS D_practiceId,
-    D_variant:patientId::string    AS D_patientId,
-    D_variant:referrerId::string   AS D_referrerId,
-    D_variant:name::string         AS D_name,
-    D_variant:address1::string     AS D_address1,
-    D_variant:address2::string     AS D_address2,
-    D_variant:city::string         AS D_city,
-    D_variant:state::string        AS D_state,
-    D_variant:zipCode::string      AS D_zipCode,
-    D_variant:country::string      AS D_country,
-    D_variant:phoneNumber::string  AS D_phoneNumber,
-    D_variant:businessId::string   AS D_businessId,
-    D_variant:anonymous::boolean   AS D_anonymous,
-    to_timestamp(D_variant:created::bigint)   AS D_created,
-    D_variant:createdBy::string    AS D_createdBy,
-    to_timestamp(D_variant:updated::bigint)   AS D_updated,
-    D_variant:updatedBy::string    AS D_updatedBy,
+    variant_col,
+    -- Flatten fields dynamically
+    variant_col:practiceId::STRING   AS D_practiceId,
+    variant_col:patientId::STRING    AS D_patientId,
+    variant_col:referrerId::STRING   AS D_referrerId,
+    variant_col:name::STRING         AS D_name,
+    variant_col:address1::STRING     AS D_address1,
+    variant_col:address2::STRING     AS D_address2,
+    variant_col:city::STRING         AS D_city,
+    variant_col:state::STRING        AS D_state,
+    variant_col:zipCode::STRING      AS D_zipCode,
+    variant_col:country::STRING      AS D_country,
+    variant_col:phoneNumber::STRING  AS D_phoneNumber,
+    variant_col:businessId::STRING   AS D_businessId,
+    variant_col:anonymous::BOOLEAN   AS D_anonymous,
+    to_timestamp(variant_col:created::BIGINT)   AS D_created,
+    variant_col:createdBy::STRING    AS D_createdBy,
+    to_timestamp(variant_col:updated::BIGINT)   AS D_updated,
+    variant_col:updatedBy::STRING    AS D_updatedBy,
 
     current_timestamp() AS processedTime,
     _change_type,
