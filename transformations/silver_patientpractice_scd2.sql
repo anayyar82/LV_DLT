@@ -1,37 +1,8 @@
 -- ====================================================
--- 1️⃣ Define the schema for D JSON column
+-- Silver PatientPractice SCD2 with safe parse_json(D)
 -- ====================================================
-CREATE OR REFRESH STREAMING TABLE bronze_patientpractice_cdf_struct AS
-SELECT
-  *,
-  from_json(
-    D,
-    'STRUCT<
-      practiceId: STRING,
-      patientId: STRING,
-      referrerId: STRING,
-      name: STRING,
-      address1: STRING,
-      address2: STRING,
-      city: STRING,
-      state: STRING,
-      zipCode: STRING,
-      country: STRING,
-      phoneNumber: STRING,
-      businessId: STRING,
-      anonymous: BOOLEAN,
-      created: BIGINT,
-      createdBy: STRING,
-      updated: BIGINT,
-      updatedBy: STRING
-    >',
-    map('mode', 'PERMISSIVE')
-  ) AS D_struct
-FROM STREAM(bronze_patientpractice_cdf);
 
--- ====================================================
--- 2️⃣ Create the Silver Table
--- ====================================================
+-- Create the Silver table
 CREATE OR REFRESH STREAMING TABLE silver_patientpractice_scd2
 (
   PatientID STRING,
@@ -42,7 +13,7 @@ CREATE OR REFRESH STREAMING TABLE silver_patientpractice_scd2
   Updated STRING,
   UpdatedBy STRING,
 
-  -- Flattened fields from D_struct
+  -- Extracted from D_variant
   D_practiceId STRING,
   D_patientId STRING,
   D_referrerId STRING,
@@ -71,12 +42,34 @@ TBLPROPERTIES (
   'quality' = 'silver'
 );
 
--- ====================================================
--- 3️⃣ Create the CDC Flow
--- ====================================================
+-- Create the CDC Flow
 CREATE FLOW silver_patientpractice_cdc_scd2 AS AUTO CDC INTO
   silver_patientpractice_scd2
 FROM (
+  WITH parsed AS (
+    SELECT
+      PatientID,
+      PracticeID,
+      Shard,
+      Created,
+      CreatedBy,
+      Updated,
+      UpdatedBy,
+      -- Parse triple-encoded JSON into VARIANT safely
+      parse_json(
+        regexp_replace(
+          regexp_replace(
+            substring(D, 2, length(D)-2),
+            '""', '"'
+          ),
+          '\\\\"', '"'
+        )
+      ) AS D_variant,
+      _change_type,
+      _commit_version,
+      _commit_timestamp
+    FROM STREAM(bronze_patientpractice_cdf)
+  )
   SELECT
     PatientID,
     PracticeID,
@@ -85,34 +78,36 @@ FROM (
     CreatedBy,
     Updated,
     UpdatedBy,
-
-    -- Flatten JSON fields from D_struct
-    D_struct:practiceId::STRING   AS D_practiceId,
-    D_struct:patientId::STRING    AS D_patientId,
-    D_struct:referrerId::STRING   AS D_referrerId,
-    D_struct:name::STRING         AS D_name,
-    D_struct:address1::STRING     AS D_address1,
-    D_struct:address2::STRING     AS D_address2,
-    D_struct:city::STRING         AS D_city,
-    D_struct:state::STRING        AS D_state,
-    D_struct:zipCode::STRING      AS D_zipCode,
-    D_struct:country::STRING      AS D_country,
-    D_struct:phoneNumber::STRING  AS D_phoneNumber,
-    D_struct:businessId::STRING   AS D_businessId,
-    D_struct:anonymous::BOOLEAN   AS D_anonymous,
-    to_timestamp(D_struct:created::BIGINT) AS D_created,
-    D_struct:createdBy::STRING    AS D_createdBy,
-    to_timestamp(D_struct:updated::BIGINT) AS D_updated,
-    D_struct:updatedBy::STRING    AS D_updatedBy,
-
+    -- Flatten JSON into structured columns
+    D_variant:practiceId::string   AS D_practiceId,
+    D_variant:patientId::string    AS D_patientId,
+    D_variant:referrerId::string   AS D_referrerId,
+    D_variant:name::string         AS D_name,
+    D_variant:address1::string     AS D_address1,
+    D_variant:address2::string     AS D_address2,
+    D_variant:city::string         AS D_city,
+    D_variant:state::string        AS D_state,
+    D_variant:zipCode::string      AS D_zipCode,
+    D_variant:country::string      AS D_country,
+    D_variant:phoneNumber::string  AS D_phoneNumber,
+    D_variant:businessId::string   AS D_businessId,
+    D_variant:anonymous::boolean   AS D_anonymous,
+    to_timestamp(D_variant:created::bigint) AS D_created,
+    D_variant:createdBy::string    AS D_createdBy,
+    to_timestamp(D_variant:updated::bigint) AS D_updated,
+    D_variant:updatedBy::string    AS D_updatedBy,
     current_timestamp() AS processedTime,
     _change_type,
     _commit_version,
     _commit_timestamp
-  FROM bronze_patientpractice_cdf_struct
+  FROM parsed
 )
 KEYS (PatientID, PracticeID)
-APPLY AS DELETE WHEN _change_type = "delete"
-SEQUENCE BY (_commit_version, _commit_timestamp)
-COLUMNS * EXCEPT (_change_type, _commit_version, _commit_timestamp)
-STORED AS SCD TYPE 2;
+APPLY AS DELETE WHEN
+  _change_type = "delete"
+SEQUENCE BY
+  (_commit_version, _commit_timestamp)
+COLUMNS * EXCEPT
+  (_change_type, _commit_version, _commit_timestamp)
+STORED AS
+  SCD TYPE 2;
