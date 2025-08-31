@@ -61,13 +61,33 @@ FROM (
       V,
       D,
       -- Convert P JSON string to MAP<STRING, STRING>
-      P,
+      --P,
       ingestTime,
       _change_type,
       _commit_version,
       _commit_timestamp,
 
       -- Parse D JSON safely (UTF-16LE → UTF-8, unescape)
+      -- from_json(D, 
+      --    'address1 STRING,
+      --     address2 STRING,
+      --     anonymous BOOLEAN,
+      --     businessId STRING,
+      --     city STRING,
+      --     country STRING,
+      --     created BIGINT,
+      --     createdBy STRING,
+      --     name STRING,
+      --     patientId STRING,
+      --     phoneNumber STRING,
+      --     practiceId STRING,
+      --     referrerId STRING,
+      --     shard INT,
+      --     state STRING,
+      --     updated BIGINT,
+      --     updatedBy STRING,
+      --     zipCode STRING' ) AS D_struct
+
       from_json(D, 'address1 STRING,
           address2 STRING,
           anonymous BOOLEAN,
@@ -85,7 +105,8 @@ FROM (
           state STRING,
           updated BIGINT,
           updatedBy STRING,
-          zipCode STRING' ) AS D_struct
+          zipCode STRING') D_struct
+
     FROM STREAM(bronze_patientpractice_cdf)
   )
   SELECT
@@ -98,27 +119,26 @@ FROM (
     UpdatedBy,
     V,
     D,
-    P,
-    D_struct,
+    -- P,
     -- Flatten D_struct
-    D_struct.address1 AS D_address1,
-    D_struct.address2 AS D_address2,
-    D_struct.anonymous AS D_anonymous,
-    D_struct.businessId AS D_businessId,
-    D_struct.city AS D_city,
-    D_struct.country AS D_country,
-    to_timestamp(D_struct.created) AS D_created,
-    D_struct.createdBy AS D_createdBy,
-    D_struct.name AS D_name,
-    D_struct.patientId AS D_patientId,
-    D_struct.phoneNumber AS D_phoneNumber,
-    D_struct.practiceId AS D_practiceId,
-    D_struct.referrerId AS D_referrerId,
-    D_struct.shard AS D_shard,
-    D_struct.state AS D_state,
-    to_timestamp(D_struct.updated) AS D_updated,
-    D_struct.updatedBy AS D_updatedBy,
-    D_struct.zipCode AS D_zipCode,
+    D_struct:address1 AS D_address1,
+    -- D_struct.address2 AS D_address2,
+    -- D_struct.anonymous AS D_anonymous,
+    -- D_struct.businessId AS D_businessId,
+    -- D_struct.city AS D_city,
+    -- D_struct.country AS D_country,
+    -- to_timestamp(D_struct.created) AS D_created,
+    -- D_struct.createdBy AS D_createdBy,
+    -- D_struct.name AS D_name,
+    -- D_struct.patientId AS D_patientId,
+    -- D_struct.phoneNumber AS D_phoneNumber,
+    -- D_struct.practiceId AS D_practiceId,
+    -- D_struct.referrerId AS D_referrerId,
+    -- D_struct.shard AS D_shard,
+    -- D_struct.state AS D_state,
+    -- to_timestamp(D_struct.updated) AS D_updated,
+    -- D_struct.updatedBy AS D_updatedBy,
+    -- D_struct.zipCode AS D_zipCode,
 
     current_timestamp() AS processedTime,
     _change_type,
@@ -142,3 +162,6 @@ STORED AS
 --           'rescuedDataColumn','_rescued_data',
 --           'schemaEvolutionMode','addNewColumns'
 --         )
+
+
+-- Cannot resolve "semi_structured_extract_json_multi(D_struct, $.address1)" due to data type mismatch: The first parameter requires the "STRING" type, however "D_struct" has the type "STRUCT<address1: STRING, address2: STRING, anonymous: BOOLEAN, businessId: STRING, city: STRING, country: STRING, created: BIGINT, createdBy: STRING, name: STRING, patientId: STRING, phoneNumber: STRING, practiceId: STRING, referrerId: STRING, shard: INT, state: STRING, updated: BIGINT, updatedBy: STRING, zipCode: STRING>".
