@@ -1,33 +1,40 @@
 -- ====================================================
--- Silver Device-Patient SCD2 with AUTO CDC and explicit schema
+-- Silver Device-Patient SCD2 with AUTO CDC (UTF-16LE JSON handling)
 -- ====================================================
 
 -- Step 1: Create or refresh the Silver table
 CREATE OR REFRESH STREAMING TABLE silver_device_patient_scd2
 (
-  PracticeID STRING,
-  Shard INT,
   PatientID STRING,
-  Created TIMESTAMP,
+  Shard STRING,
+  PracticeID STRING,
+  Created STRING,
   CreatedBy STRING,
-  Updated TIMESTAMP,
+  Updated STRING,
   UpdatedBy STRING,
   V STRING,
   D STRING,  -- Original JSON string
-  P MAP<STRING, STRING>,
+  P MAP<STRING, STRING>,  -- permissions map
 
   -- Flattened fields from D
+  D_address1 STRING,
+  D_address2 STRING,
+  D_anonymous BOOLEAN,
+  D_businessId STRING,
+  D_city STRING,
+  D_country STRING,
   D_created TIMESTAMP,
   D_createdBy STRING,
-  D_dateOfBirth TIMESTAMP,
-  D_deviceTypeId INT,
-  D_firstName STRING,
-  D_lastName STRING,
+  D_name STRING,
   D_patientId STRING,
+  D_phoneNumber STRING,
   D_practiceId STRING,
+  D_referrerId STRING,
   D_shard INT,
+  D_state STRING,
   D_updated TIMESTAMP,
   D_updatedBy STRING,
+  D_zipCode STRING,
 
   processedTime TIMESTAMP
 )
@@ -44,48 +51,63 @@ CREATE FLOW silver_device_patient_cdc_scd2 AS AUTO CDC INTO
 FROM (
   WITH parsed AS (
     SELECT
-      PracticeID,
-      Shard,
       PatientID,
+      Shard,
+      PracticeID,
       Created,
       CreatedBy,
       Updated,
       UpdatedBy,
       V,
       D,
-      from_json(P, 'MAP<STRING, STRING>') as P,
+      -- Convert P JSON string to MAP<STRING, STRING>
+      from_json(P, 'MAP<STRING, STRING>') AS P,
       ingestTime,
       _change_type,
       _commit_version,
       _commit_timestamp,
 
-      -- Parse JSON D using PERMISSIVE mode
+      -- Parse D JSON safely (UTF-16LE → UTF-8, unescape)
       from_json(
-        D,
+        regexp_replace(
+          regexp_replace(
+            cast(convert_to(D,'UTF-8') AS STRING),
+            '""', '"'
+          ),
+          '\\\\"', '"'
+        ),
         'STRUCT<
+          address1: STRING,
+          address2: STRING,
+          anonymous: BOOLEAN,
+          businessId: STRING,
+          city: STRING,
+          country: STRING,
           created: BIGINT,
           createdBy: STRING,
-          dateOfBirth: BIGINT,
-          firstName: STRING,
-          lastName: STRING,
+          name: STRING,
           patientId: STRING,
+          phoneNumber: STRING,
           practiceId: STRING,
+          referrerId: STRING,
           shard: INT,
+          state: STRING,
           updated: BIGINT,
-          updatedBy: STRING
+          updatedBy: STRING,
+          zipCode: STRING
         >',
         map(
           'mode','PERMISSIVE',
           'rescuedDataColumn','_rescued_data',
           'schemaEvolutionMode','addNewColumns'
-          )
+        )
       ) AS D_struct
     FROM STREAM(bronze_patientpractice_cdf)
   )
   SELECT
-    PracticeID,
-    Shard,
     PatientID,
+    Shard,
+    PracticeID,
     Created,
     CreatedBy,
     Updated,
@@ -95,16 +117,24 @@ FROM (
     P,
 
     -- Flatten D_struct
+    D_struct.address1 AS D_address1,
+    D_struct.address2 AS D_address2,
+    D_struct.anonymous AS D_anonymous,
+    D_struct.businessId AS D_businessId,
+    D_struct.city AS D_city,
+    D_struct.country AS D_country,
     to_timestamp(D_struct.created) AS D_created,
     D_struct.createdBy AS D_createdBy,
-    to_timestamp(D_struct.dateOfBirth) AS D_dateOfBirth,
-    D_struct.firstName AS D_firstName,
-    D_struct.lastName AS D_lastName,
+    D_struct.name AS D_name,
     D_struct.patientId AS D_patientId,
+    D_struct.phoneNumber AS D_phoneNumber,
     D_struct.practiceId AS D_practiceId,
+    D_struct.referrerId AS D_referrerId,
     D_struct.shard AS D_shard,
+    D_struct.state AS D_state,
     to_timestamp(D_struct.updated) AS D_updated,
     D_struct.updatedBy AS D_updatedBy,
+    D_struct.zipCode AS D_zipCode,
 
     current_timestamp() AS processedTime,
     _change_type,
@@ -121,33 +151,3 @@ COLUMNS * EXCEPT
   (_change_type, _commit_version, _commit_timestamp)
 STORED AS
   SCD TYPE 2;
-
-
-
-
-PatientID:string
-Shard:string
-PracticeID:string
-Created:string
-CreatedBy:string
-Updated:string
-UpdatedBy:string
-V:string
-D:string
-P:string
-inputFilename:string
-fullFilePath:string
-fileMetadata:struct
-bronze_prefix:string
-ingestTime:timestamp
-ingestDate:date
-_change_type:string
-_commit_version:long
-_commit_timestamp:timestamp
-
-
-{"address1":"010 Dicki Union","address2":"22025 Marlin Light","anonymous":false,"businessId":"idxdlfxc71","city":"North Nicolas","country":"US","created":1587214191,"createdBy":"17fdc071-8173-11ea-97b7-0242ac110008","name":"practicevjalt6k7","patientId":"17fdc071-8173-11ea-97b7-0242ac110008","phoneNumber":"01653453370","practiceId":"171ecdf0-8173-11ea-97b7-0242ac110008","referrerId":"13f70c75-8173-11ea-844f-0242ac11000b","shard":1836,"state":"Iowa","updated":1587214191,"updatedBy":"17fdc071-8173-11ea-97b7-0242ac110008","zipCode":"02665"}
-
-
-{"171ecdf0-8173-11ea-97b7-0242ac110008":"w","17fdc071-8173-11ea-97b7-0242ac110008":"w"}
-
