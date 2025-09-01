@@ -36,6 +36,7 @@ def generate_bronze_table(path, schema, table_name):
             .option("cloudFiles.format", "csv")
             .option("sep", "\t")
             .option("header", "true")
+            #.option("encoding", "UTF-16LE")
             .schema(schema)
             .load(path)
             .withColumn("inputFilename", col("_metadata.file_name"))
