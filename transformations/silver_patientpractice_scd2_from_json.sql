@@ -1,0 +1,248 @@
+-- ====================================================
+-- Silver Device-Patient SCD2 with AUTO CDC
+-- ====================================================
+
+-- Silver table for valid records (with automatic schema evolution)
+CREATE OR REFRESH STREAMING TABLE silver_device_patient_scd2
+(
+  PatientID STRING,
+  Shard STRING,
+  PracticeID STRING,
+  Created TIMESTAMP,
+  CreatedBy STRING,
+  Updated TIMESTAMP,
+  UpdatedBy STRING,
+  V STRING,
+  D STRING,
+  P STRING,
+  -- All JSON fields extracted from D
+  address1 STRING,
+  address2 STRING,
+  anonymous BOOLEAN,
+  businessId STRING,
+  city STRING,
+  country STRING,
+  json_created BIGINT, -- Renamed to avoid conflict with the existing 'Created' column
+  json_createdBy STRING, -- Renamed to avoid conflict
+  name STRING,
+  patientId_from_json STRING, -- Renamed to avoid conflict with the existing 'PatientID' column
+  phoneNumber STRING,
+  practiceId_from_json STRING, -- Renamed to avoid conflict with the existing 'PracticeID' column
+  referrerId STRING,
+  json_shard INT, -- Renamed to avoid conflict
+  state STRING,
+  json_updated BIGINT, -- Renamed to avoid conflict
+  json_updatedBy STRING, -- Renamed to avoid conflict
+  zipCode STRING,
+  processedTime TIMESTAMP
+)
+TBLPROPERTIES (
+  'delta.enableChangeDataFeed' = 'true',
+  'quality' = 'silver'
+);
+
+
+CREATE FLOW silver_device_patient_cdc_scd2 AS AUTO CDC INTO silver_device_patient_scd2
+FROM (
+  WITH parsed AS (
+    SELECT
+      PatientID,
+      Shard,
+      PracticeID,
+      CAST(Created AS TIMESTAMP) AS Created,
+      CreatedBy,
+      CAST(Updated AS TIMESTAMP) AS Updated,
+      UpdatedBy,
+      V,
+      D,
+      P,
+      _change_type,
+      _commit_version,
+      _commit_timestamp,
+      current_timestamp() AS processedTime,
+      from_json(
+        REPLACE(REGEXP_REPLACE(D, '[\\x00-\\x1F\\x7F]', ''),'\\u0000', ''),
+        'STRUCT<address1: STRING, address2: STRING, anonymous: BOOLEAN, businessId: STRING, city: STRING, country: STRING, created: BIGINT, createdBy: STRING, name: STRING, patientId: STRING, phoneNumber: STRING, practiceId: STRING, referrerId: STRING, shard: INT, state: STRING, updated: BIGINT, updatedBy: STRING, zipCode: STRING>'
+      ) AS json_data
+    FROM STREAM(bronze_patientpractice_cdf)
+  )
+  SELECT
+    PatientID,
+    Shard,
+    PracticeID,
+    Created,
+    CreatedBy,
+    Updated,
+    UpdatedBy,
+    V,
+    D,
+    P,
+    processedTime,
+    _change_type,
+    _commit_version,
+    _commit_timestamp,
+    json_data.address1,
+    json_data.address2,
+    json_data.anonymous,
+    json_data.businessId,
+    json_data.city,
+    json_data.country,
+    json_data.created AS json_created,
+    json_data.createdBy AS json_createdBy,
+    json_data.name,
+    json_data.patientId AS patientId_from_json,
+    json_data.phoneNumber,
+    json_data.practiceId AS practiceId_from_json,
+    json_data.referrerId,
+    json_data.shard AS json_shard,
+    json_data.state,
+    json_data.updated AS json_updated,
+    json_data.updatedBy AS json_updatedBy,
+    json_data.zipCode
+  FROM parsed
+  WHERE json_data IS NOT NULL
+    AND json_data.patientId IS NOT NULL
+)
+KEYS (patientId_from_json, practiceId_from_json)
+APPLY AS DELETE WHEN _change_type = "delete"
+SEQUENCE BY (_commit_version, _commit_timestamp)
+COLUMNS * EXCEPT (_change_type, _commit_version, _commit_timestamp)
+STORED AS SCD TYPE 2;
+
+
+-- CREATE FLOW silver_device_patient_cdc_scd2 AS AUTO CDC INTO silver_device_patient_scd2
+-- FROM (
+--   WITH parsed AS (
+--     SELECT
+--       PatientID AS patientId,
+--       Shard,
+--       PracticeID AS practiceId, -- Use the correct field name from the JSON data
+--       CAST(Created AS TIMESTAMP) AS Created,
+--       CreatedBy,
+--       CAST(Updated AS TIMESTAMP) AS Updated,
+--       UpdatedBy,
+--       V,
+--       D,
+--       P,
+--       _change_type,
+--       _commit_version,
+--       _commit_timestamp,
+--       current_timestamp() AS processedTime,
+--       from_json(
+--         REPLACE(
+--           REGEXP_REPLACE(D, '[\\x00-\\x1F\\x7F]', ''),
+--           '\\u0000', ''
+--         ),
+--         NULL,
+--         map("schemaLocationKey", "silver_patient_schema123")
+--       ) AS json_data
+--     FROM STREAM(bronze_patientpractice_cdf)
+--   )
+--   SELECT
+--     patientId,
+--     Shard,
+--     practiceId, -- Corrected field name
+--     Created,
+--     CreatedBy,
+--     Updated,
+--     UpdatedBy,
+--     V,
+--     D,
+--     P,
+--     processedTime,
+--     _change_type,
+--     _commit_version,
+--     _commit_timestamp,
+--     json_data.*
+--   FROM parsed
+--   WHERE json_data IS NOT NULL
+--   --   AND json_data.patientId IS NOT NULL
+-- )
+-- KEYS (patientId, practiceId) -- Use the corrected field names as keys
+-- APPLY AS DELETE WHEN _change_type = "delete"
+-- SEQUENCE BY (_commit_version, _commit_timestamp)
+-- COLUMNS * EXCEPT (_change_type, _commit_version, _commit_timestamp)
+-- STORED AS SCD TYPE 2;
+
+
+
+-- Create the quarantine table
+-- CREATE OR REFRESH STREAMING TABLE quarantine_device_patient
+-- (
+--   D STRING,
+--   _rescued_data STRING,
+--   error_message STRING,
+--   processedTime TIMESTAMP
+-- )
+-- TBLPROPERTIES ('quality' = 'quarantine');
+
+
+
+
+-- -- Table to track all JSON keys encountered in the D column
+-- CREATE OR REFRESH STREAMING TABLE silver_device_patient_key_tracking
+-- (
+--   key_name STRING,
+--   first_seen_timestamp TIMESTAMP,
+--   last_updated_timestamp TIMESTAMP,
+--   source_table STRING
+-- )
+-- TBLPROPERTIES ('quality' = 'silver');
+
+-- CREATE FLOW quarantine_device_patient_flow
+-- AS INSERT INTO quarantine_device_patient BY NAME
+-- SELECT
+--   D,
+--   -- We don't have _rescued_data, so we use the raw D column for the `_rescued_data` field
+--   D AS _rescued_data,
+--   CASE
+--     WHEN json_data IS NULL THEN 'Malformed JSON in D column'
+--     WHEN json_data.practiceId IS NULL THEN 'Missing or invalid PracticeId'
+--     ELSE 'Unknown error'
+--   END AS error_message,
+--   current_timestamp() AS processedTime
+-- FROM (
+--   SELECT
+--     D,
+--     from_json(
+--       REPLACE(
+--         REGEXP_REPLACE(D, '[\\x00-\\x1F\\x7F]', ''),
+--         '\\u0000', ''
+--       ),
+--       NULL,
+--       map("schemaLocationKey", "silver_patient_schema")
+--     ) AS json_data
+--   FROM STREAM(bronze_patientpractice_cdf)
+-- )
+-- WHERE json_data IS NULL
+--   OR json_data.practiceId IS NULL;
+
+-- Table to track all JSON keys encountered in the D column
+CREATE OR REFRESH STREAMING TABLE silver_device_patient_key_tracking
+(
+  key_name STRING,
+  first_seen_timestamp TIMESTAMP,
+  last_updated_timestamp TIMESTAMP,
+  source_table STRING
+)
+TBLPROPERTIES ('quality' = 'silver');
+
+
+CREATE FLOW discover_new_json_keys
+AS APPLY CHANGES INTO silver_device_patient_key_tracking
+FROM (
+  SELECT
+    key_name,
+    current_timestamp() as first_seen_timestamp,
+    current_timestamp() as last_updated_timestamp,
+    "bronze_patientpractice_cdf" as source_table
+  FROM (
+    SELECT
+      explode(json_object_keys(
+        REPLACE(REGEXP_REPLACE(D, '[\\x00-\\x1F\\x7F]', ''),'\\u0000', '')
+      )) as key_name
+    FROM STREAM(bronze_patientpractice_cdf)
+  )
+)
+KEYS (key_name) -- Mismatch with the target table `silver_device_patient_key_tracking`
+SEQUENCE BY last_updated_timestamp;

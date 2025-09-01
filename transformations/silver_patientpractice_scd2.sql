@@ -1,118 +1,123 @@
--- ====================================================
--- Silver Device-Patient SCD2 with AUTO CDC (UTF-16LE JSON handling) AND UTF 8
--- ====================================================
+-- -- ====================================================
+-- -- Silver Device-Patient SCD2 with AUTO CDC
+-- -- ====================================================
 
--- Step 1: Create or refresh the Silver table
-CREATE OR REFRESH STREAMING TABLE silver_device_patient_scd2
-(
-  PatientID STRING,
-  Shard STRING,
-  PracticeID STRING,
-  Created STRING,
-  CreatedBy STRING,
-  Updated STRING,
-  UpdatedBy STRING,
-  V STRING,
-  D STRING,               -- Original JSON string
-  P STRING,  -- permissions map
+-- -- Step 1: Create or refresh the Silver table
+-- CREATE OR REFRESH STREAMING TABLE silver_device_patient_scd2
+-- (
+--   PatientID STRING,
+--   Shard STRING,
+--   PracticeID STRING,
+--   Created TIMESTAMP, -- Changed to TIMESTAMP
+--   CreatedBy STRING,
+--   Updated TIMESTAMP, -- Changed to TIMESTAMP
+--   UpdatedBy STRING,
+--   V STRING,
+--   D STRING,
+--   P STRING,
+--   -- Extracted from D_variant
+--   D_id STRING,
+--   D_name STRING,
+--   D_patientId STRING,
+--   D_address1 STRING,
+--   D_address2 STRING,
+--   D_anonymous BOOLEAN,
+--   D_city STRING,
+--   D_state STRING,
+--   D_zipCode STRING,
+--   D_country STRING,
+--   D_phoneNumber STRING,
+--   D_businessId STRING,
+--   D_practiceId STRING,
+--   D_referrerId STRING,
+--   D_private BOOLEAN,
+--   D_created TIMESTAMP,
+--   D_createdBy STRING,
+--   D_updated TIMESTAMP,
+--   D_updatedBy STRING,
 
-    -- Extracted from D_variant
-  D_id STRING,
-  D_name STRING,
-  D_address1 STRING,
-  D_address2 STRING,
-  D_city STRING,
-  D_state STRING,
-  D_zipCode STRING,
-  D_country STRING,
-  D_phoneNumber STRING,
-  D_businessId STRING,
-  D_private BOOLEAN,
-  D_created TIMESTAMP,
-  D_createdBy STRING,
-  D_updated TIMESTAMP,
-  D_updatedBy STRING,
+--   processedTime TIMESTAMP
+-- )
+-- TBLPROPERTIES (
+--   'delta.enableChangeDataFeed' = 'true',
+--   'delta.enableDeletionVectors' = 'true',
+--   'delta.enableRowTracking' = 'true',
+--   'quality' = 'silver'
+-- );
 
-  processedTime TIMESTAMP
-)
-TBLPROPERTIES (
-  'delta.enableChangeDataFeed' = 'true',
-  'delta.enableDeletionVectors' = 'true',
-  'delta.enableRowTracking' = 'true',
-  'quality' = 'silver'
-);
+-- -- Step 2: Create the CDC flow
+-- CREATE FLOW silver_device_patient_cdc_scd2 AS AUTO CDC INTO
+--   silver_device_patient_scd2
+-- FROM (
+--   WITH parsed AS (
+--     SELECT
+--       PatientID,
+--       Shard,
+--       PracticeID,
+--       CAST(Created AS TIMESTAMP) AS Created,
+--       CreatedBy,
+--       CAST(Updated AS TIMESTAMP) AS Updated,
+--       UpdatedBy,
+--       V,
+--       D,
+--       P,
+--       ingestTime,
+--       _change_type,
+--       _commit_version,
+--       _commit_timestamp,
 
--- Step 2: Create the CDC flow
-CREATE FLOW silver_device_patient_cdc_scd2 AS AUTO CDC INTO
-  silver_device_patient_scd2
-FROM (
-  WITH parsed AS (
-    SELECT
-      PatientID,
-      Shard,
-      PracticeID,
-      Created,
-      CreatedBy,
-      Updated,
-      UpdatedBy,
-      V,
-      D,
-      P,
-      ingestTime,
-      _change_type,
-      _commit_version,
-      _commit_timestamp,
+--       try_parse_json(
+--         REPLACE(
+--           REGEXP_REPLACE(D, '[\\x00-\\x1F\\x7F]', ''),
+--           '\\u0000', ''
+--         )
+--       ) AS json_data
+--     FROM STREAM(bronze_patientpractice_cdf)
+--   )
+--   SELECT
+--     PatientID,
+--     Shard,
+--     PracticeID,
+--     Created,
+--     CreatedBy,
+--     Updated,
+--     UpdatedBy,
+--     V,
+--     D,
+--     P,
 
-      -- Parse triple-encoded JSON into VARIANT
-      parse_json(
-        regexp_replace(
-          regexp_replace(
-            substring(D, 2, length(D)-2),
-            '""', '"'
-          ),
-          '\\\\"', '"'
-        )
-      ) AS D_variant
+--     -- Flatten into structured columns, with explicit types
+--     TRIM(variant_get(json_data, '$.patientId')) AS D_id,
+--     TRIM(variant_get(json_data, '$.name')) AS D_name,
+--     TRIM(variant_get(json_data, '$.patientId')) AS D_patientId,
+--     TRIM(variant_get(json_data, '$.address1')) AS D_address1,
+--     TRIM(variant_get(json_data, '$.address2')) AS D_address2,
+--     CAST(variant_get(json_data, '$.anonymous') AS BOOLEAN) AS D_anonymous,
+--     TRIM(variant_get(json_data, '$.city')) AS D_city,
+--     TRIM(variant_get(json_data, '$.state')) AS D_state,
+--     TRIM(variant_get(json_data, '$.zipCode')) AS D_zipCode,
+--     TRIM(variant_get(json_data, '$.country')) AS D_country,
+--     TRIM(variant_get(json_data, '$.phoneNumber')) AS D_phoneNumber,
+--     TRIM(variant_get(json_data, '$.businessId')) AS D_businessId,
+--     TRIM(variant_get(json_data, '$.practiceId')) AS D_practiceId,
+--      TRIM(variant_get(json_data, '$.referrerId')) AS D_referrerId,
+--     CAST(variant_get(json_data, '$.private') AS BOOLEAN) AS D_private,
+--     -- CORRECTED: CAST variant_get to BIGINT before from_unixtime
+--     from_unixtime(CAST(variant_get(json_data, '$.created') AS BIGINT)) AS D_created,
+--     TRIM(variant_get(json_data, '$.createdBy')) AS D_createdBy,
+--     -- CORRECTED: CAST variant_get to BIGINT before from_unixtime
+--     from_unixtime(CAST(variant_get(json_data, '$.updated') AS BIGINT)) AS D_updated,
+--     TRIM(variant_get(json_data, '$.updatedBy')) AS D_updatedBy,
 
-    FROM STREAM(bronze_patientpractice_cdf)
-  )
-  SELECT
-    PatientID,
-    Shard,
-    PracticeID,
-    Created,
-    CreatedBy,
-    Updated,
-    UpdatedBy,
-    V,
-    D,
-    P,
-
-    -- Flatten into structured columns
-    D_variant:id::string           AS D_id,
-    D_variant:name::string         AS D_name,
-    D_variant:address1::string     AS D_address1,
-    D_variant:address2::string     AS D_address2,
-    D_variant:city::string         AS D_city,
-    D_variant:state::string        AS D_state,
-    D_variant:zipCode::string      AS D_zipCode,
-    D_variant:country::string      AS D_country,
-    D_variant:phoneNumber::string  AS D_phoneNumber,
-    D_variant:businessId::string   AS D_businessId,
-    D_variant:private::boolean     AS D_private,
-    D_variant:createdBy::string    AS D_createdBy,
-    D_variant:updatedBy::string    AS D_updatedBy,
-    to_timestamp(D_variant:created::bigint) AS D_created,
-    to_timestamp(D_variant:updated::bigint) AS D_updated,
-
-    current_timestamp() AS processedTime,
-    _change_type,
-    _commit_version,
-    _commit_timestamp
-  FROM parsed
-)
-KEYS (PatientID)
-APPLY AS DELETE WHEN _change_type = "delete"
-SEQUENCE BY (_commit_version, _commit_timestamp)
-COLUMNS * EXCEPT (_change_type, _commit_version, _commit_timestamp)
-STORED AS SCD TYPE 2;
+--     current_timestamp() AS processedTime,
+--     _change_type,
+--     _commit_version,
+--     _commit_timestamp
+--   FROM parsed
+--   WHERE json_data IS NOT NULL -- Exclude the malformed records
+-- )
+-- KEYS (PatientID, PracticeID)
+-- APPLY AS DELETE WHEN _change_type = "delete"
+-- SEQUENCE BY (_commit_version, _commit_timestamp)
+-- COLUMNS * EXCEPT (_change_type, _commit_version, _commit_timestamp)
+-- STORED AS SCD TYPE 2;
