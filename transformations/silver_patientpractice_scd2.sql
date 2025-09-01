@@ -14,30 +14,24 @@ CREATE OR REFRESH STREAMING TABLE silver_device_patient_scd2
   UpdatedBy STRING,
   V STRING,
   D STRING,               -- Original JSON string
-  P MAP<STRING, STRING>,  -- permissions map
+  P STRING,  -- permissions map
 
-  -- Flattened fields from D
+    -- Extracted from D_variant
+  D_id STRING,
+  D_name STRING,
   D_address1 STRING,
   D_address2 STRING,
-  D_anonymous BOOLEAN,
-  D_businessId STRING,
   D_city STRING,
+  D_state STRING,
+  D_zipCode STRING,
   D_country STRING,
+  D_phoneNumber STRING,
+  D_businessId STRING,
+  D_private BOOLEAN,
   D_created TIMESTAMP,
   D_createdBy STRING,
-  D_name STRING,
-  D_patientId STRING,
-  D_phoneNumber STRING,
-  D_practiceId STRING,
-  D_referrerId STRING,
-  D_shard INT,
-  D_state STRING,
   D_updated TIMESTAMP,
   D_updatedBy STRING,
-  D_zipCode STRING,
-
-  -- Extra dynamic fields
-  D_extra MAP<STRING, STRING>,
 
   processedTime TIMESTAMP
 )
@@ -69,28 +63,17 @@ FROM (
       _commit_version,
       _commit_timestamp,
 
-      -- Step 2: Parse known fields into struct
-      from_json(D, 
-      'address1 STRING,
-        address2 STRING,
-        anonymous BOOLEAN,
-        businessId STRING,
-        city STRING,
-        country STRING,
-        created BIGINT,
-        createdBy STRING,
-        name STRING,
-        patientId STRING,
-        phoneNumber STRING,
-        practiceId STRING,
-        referrerId STRING,
-        shard INT,
-        state STRING,
-        updated BIGINT,
-        updatedBy STRING,
-        zipCode STRING
-        '
-      ) AS D_struct
+      -- Parse triple-encoded JSON into VARIANT
+      parse_json(
+        regexp_replace(
+          regexp_replace(
+            substring(D, 2, length(D)-2),
+            '""', '"'
+          ),
+          '\\\\"', '"'
+        )
+      ) AS D_variant
+
     FROM STREAM(bronze_patientpractice_cdf)
   )
   SELECT
@@ -105,32 +88,22 @@ FROM (
     D,
     P,
 
-    -- Flatten known struct fields
-    D_struct.address1 AS D_address1,
-    -- D_struct.address2 AS D_address2,
-    -- D_struct.anonymous AS D_anonymous,
-    -- D_struct.businessId AS D_businessId,
-    -- D_struct.city AS D_city,
-    -- D_struct.country AS D_country,
-    -- to_timestamp(D_struct.created) AS D_created,
-    -- D_struct.createdBy AS D_createdBy,
-    -- D_struct.name AS D_name,
-    -- D_struct.patientId AS D_patientId,
-    -- D_struct.phoneNumber AS D_phoneNumber,
-    -- D_struct.practiceId AS D_practiceId,
-    -- D_struct.referrerId AS D_referrerId,
-    -- D_struct.shard AS D_shard,
-    -- D_struct.state AS D_state,
-    -- to_timestamp(D_struct.updated) AS D_updated,
-    -- D_struct.updatedBy AS D_updatedBy,
-    -- D_struct.zipCode AS D_zipCode,
-
-    -- Include map of extra keys (dynamic)
-    -- map_filter(D_struct, (k,v) -> not array_contains(array(
-    --     'address1','address2','anonymous','businessId','city','country',
-    --     'created','createdBy','name','patientId','phoneNumber','practiceId',
-    --     'referrerId','shard','state','updated','updatedBy','zipCode'
-    -- ), k)) AS D_extra,
+    -- Flatten into structured columns
+    D_variant:id::string           AS D_id,
+    D_variant:name::string         AS D_name,
+    D_variant:address1::string     AS D_address1,
+    D_variant:address2::string     AS D_address2,
+    D_variant:city::string         AS D_city,
+    D_variant:state::string        AS D_state,
+    D_variant:zipCode::string      AS D_zipCode,
+    D_variant:country::string      AS D_country,
+    D_variant:phoneNumber::string  AS D_phoneNumber,
+    D_variant:businessId::string   AS D_businessId,
+    D_variant:private::boolean     AS D_private,
+    D_variant:createdBy::string    AS D_createdBy,
+    D_variant:updatedBy::string    AS D_updatedBy,
+    to_timestamp(D_variant:created::bigint) AS D_created,
+    to_timestamp(D_variant:updated::bigint) AS D_updated,
 
     current_timestamp() AS processedTime,
     _change_type,
