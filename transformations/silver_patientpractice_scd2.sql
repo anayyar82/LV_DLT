@@ -1,5 +1,9 @@
 -- -- ====================================================
+<<<<<<< Updated upstream
 -- -- Silver Device-Patient SCD2 with AUTO CDC
+=======
+-- -- Silver Device-Patient SCD2 with AUTO CDC (UTF-16LE JSON handling) AND UTF 8
+>>>>>>> Stashed changes
 -- -- ====================================================
 
 -- -- Step 1: Create or refresh the Silver table
@@ -8,6 +12,7 @@
 --   PatientID STRING,
 --   Shard STRING,
 --   PracticeID STRING,
+<<<<<<< Updated upstream
 --   Created TIMESTAMP, -- Changed to TIMESTAMP
 --   CreatedBy STRING,
 --   Updated TIMESTAMP, -- Changed to TIMESTAMP
@@ -109,14 +114,156 @@
 --     from_unixtime(CAST(variant_get(json_data, '$.updated') AS BIGINT)) AS D_updated,
 --     TRIM(variant_get(json_data, '$.updatedBy')) AS D_updatedBy,
 
+=======
+--   Created STRING,
+--   CreatedBy STRING,
+--   Updated STRING,
+--   UpdatedBy STRING,
+--   V STRING,
+--   D STRING,               -- Original JSON string
+--   P MAP<STRING, STRING>,  -- permissions map
+
+--   -- Flattened fields from D
+--   D_address1 STRING,
+--   D_address2 STRING,
+--   D_anonymous BOOLEAN,
+--   D_businessId STRING,
+--   D_city STRING,
+--   D_country STRING,
+--   D_created TIMESTAMP,
+--   D_createdBy STRING,
+--   D_name STRING,
+--   D_patientId STRING,
+--   D_phoneNumber STRING,
+--   D_practiceId STRING,
+--   D_referrerId STRING,
+--   D_shard INT,
+--   D_state STRING,
+--   D_updated TIMESTAMP,
+--   D_updatedBy STRING,
+--   D_zipCode STRING,
+
+--   -- Extra dynamic fields
+--   D_extra MAP<STRING, STRING>,
+
+--   processedTime TIMESTAMP
+-- )
+-- TBLPROPERTIES (
+--   'delta.enableChangeDataFeed' = 'true',
+--   'delta.enableDeletionVectors' = 'true',
+--   'delta.enableRowTracking' = 'true',
+--   'quality' = 'silver'
+-- );
+
+-- -- Step 2: Create the CDC flow
+-- CREATE FLOW silver_device_patient_cdc_scd2 AS AUTO CDC INTO
+--   silver_device_patient_scd2
+-- FROM (
+--   WITH parsed AS (
+--     SELECT
+--       PatientID,
+--       Shard,
+--       PracticeID,
+--       Created,
+--       CreatedBy,
+--       Updated,
+--       UpdatedBy,
+--       V,
+--       D,
+--       P,
+--       ingestTime,
+--       _change_type,
+--       _commit_version,
+--       _commit_timestamp,
+
+--       -- Step 1: Convert UTF-16LE → UTF-8
+--       convert(D, 'UTF8') AS D_utf8,
+
+--       -- Step 2: Parse known fields into struct
+--       from_json(
+--         convert(D, 'UTF8'),
+--         '
+--         address1 STRING,
+--         address2 STRING,
+--         anonymous BOOLEAN,
+--         businessId STRING,
+--         city STRING,
+--         country STRING,
+--         created BIGINT,
+--         createdBy STRING,
+--         name STRING,
+--         patientId STRING,
+--         phoneNumber STRING,
+--         practiceId STRING,
+--         referrerId STRING,
+--         shard INT,
+--         state STRING,
+--         updated BIGINT,
+--         updatedBy STRING,
+--         zipCode STRING
+--         '
+--       ) AS D_struct,
+
+--       -- Step 3: Parse all keys into a map for extra/dynamic fields
+--       from_json(
+--         convert(D, 'UTF8'),
+--         'map<string,string>'
+--       ) AS D_map
+--     FROM STREAM(bronze_patientpractice_cdf)
+--   )
+--   SELECT
+--     PatientID,
+--     Shard,
+--     PracticeID,
+--     Created,
+--     CreatedBy,
+--     Updated,
+--     UpdatedBy,
+--     V,
+--     D,
+--     P,
+
+--     -- Flatten known struct fields
+--     D_struct.address1 AS D_address1,
+--     D_struct.address2 AS D_address2,
+--     D_struct.anonymous AS D_anonymous,
+--     D_struct.businessId AS D_businessId,
+--     D_struct.city AS D_city,
+--     D_struct.country AS D_country,
+--     to_timestamp(D_struct.created) AS D_created,
+--     D_struct.createdBy AS D_createdBy,
+--     D_struct.name AS D_name,
+--     D_struct.patientId AS D_patientId,
+--     D_struct.phoneNumber AS D_phoneNumber,
+--     D_struct.practiceId AS D_practiceId,
+--     D_struct.referrerId AS D_referrerId,
+--     D_struct.shard AS D_shard,
+--     D_struct.state AS D_state,
+--     to_timestamp(D_struct.updated) AS D_updated,
+--     D_struct.updatedBy AS D_updatedBy,
+--     D_struct.zipCode AS D_zipCode,
+
+--     -- Include map of extra keys (dynamic)
+--     map_filter(D_map, (k,v) -> not array_contains(array(
+--         'address1','address2','anonymous','businessId','city','country',
+--         'created','createdBy','name','patientId','phoneNumber','practiceId',
+--         'referrerId','shard','state','updated','updatedBy','zipCode'
+--     ), k)) AS D_extra,
+
+>>>>>>> Stashed changes
 --     current_timestamp() AS processedTime,
 --     _change_type,
 --     _commit_version,
 --     _commit_timestamp
 --   FROM parsed
+<<<<<<< Updated upstream
 --   WHERE json_data IS NOT NULL -- Exclude the malformed records
 -- )
 -- KEYS (PatientID, PracticeID)
+=======
+-- )
+-- KEYS (PatientID)
+>>>>>>> Stashed changes
 -- APPLY AS DELETE WHEN _change_type = "delete"
 -- SEQUENCE BY (_commit_version, _commit_timestamp)
 -- COLUMNS * EXCEPT (_change_type, _commit_version, _commit_timestamp)
