@@ -1,28 +1,22 @@
 -- -- ====================================================
--- -- 3️⃣ Silver table - parse VARIANT safely (triple-encoded JSON)
+-- -- Silver table - from_json on D with schema registry
 -- -- ====================================================
 
--- -- Create the Silver table
 -- CREATE OR REFRESH STREAMING TABLE silver_events_patient_data_scd2
 -- (
---   ID STRING,
+--   PracticeID STRING,
 --   Shard STRING,
---   Private STRING,
---   Name STRING,
---   Address1 STRING,
---   Address2 STRING,
---   City STRING,
---   State STRING,
---   ZipCode STRING,
---   Country STRING,
---   PhoneNumber STRING,
---   BusinessID STRING,
+--   DeviceTypeID STRING,
+--   SerialNumber STRING,
+--   PatientID STRING,
 --   Created STRING,
 --   CreatedBy STRING,
 --   Updated STRING,
 --   UpdatedBy STRING,
+--   V STRING,
+--   P STRING,
 
---   -- Extracted from D_variant
+--   -- Flattened from D
 --   D_id STRING,
 --   D_name STRING,
 --   D_address1 STRING,
@@ -54,34 +48,31 @@
 -- FROM (
 --   WITH parsed AS (
 --     SELECT
---       ID,
+--       PracticeID,
 --       Shard,
---       Private,
---       Name,
---       Address1,
---       Address2,
---       City,
---       State,
---       ZipCode,
---       Country,
---       PhoneNumber,
---       BusinessID,
+--       DeviceTypeID,
+--       SerialNumber,
+--       PatientID,
 --       Created,
 --       CreatedBy,
 --       Updated,
 --       UpdatedBy,
---       -- Parse triple-encoded JSON into VARIANT
---       parse_json(
---         regexp_replace(
---           regexp_replace(
---             substring(D, 2, length(D)-2),
---             '""', '"'
---           ),
---           '\\\\"', '"'
---         )
---       ) AS D_variant,
---       P,
 --       V,
+--       P,
+
+--       -- ✅ Parse D safely
+--       from_json(
+--         REPLACE(
+--           REGEXP_REPLACE(
+--             regexp_replace(substring(D, 2, length(D)-2), '""', '"'),
+--             '[\\x00-\\x1F\\x7F]', ''
+--           ),
+--           '\\u0000', ''
+--         ),
+--         NULL,
+--         map("schemaLocationKey", "silver_patient_schema123")
+--       ) AS D_struct,
+
 --       ingestTime,
 --       _change_type,
 --       _commit_version,
@@ -89,45 +80,42 @@
 --     FROM STREAM(patient_cdf)
 --   )
 --   SELECT
---     ID,
+--     PracticeID,
 --     Shard,
---     Private,
---     Name,
---     Address1,
---     Address2,
---     City,
---     State,
---     ZipCode,
---     Country,
---     PhoneNumber,
---     BusinessID,
+--     DeviceTypeID,
+--     SerialNumber,
+--     PatientID,
 --     Created,
 --     CreatedBy,
 --     Updated,
 --     UpdatedBy,
---     -- Flatten into structured columns
---     D_variant:id::string           AS D_id,
---     D_variant:name::string         AS D_name,
---     D_variant:address1::string     AS D_address1,
---     D_variant:address2::string     AS D_address2,
---     D_variant:city::string         AS D_city,
---     D_variant:state::string        AS D_state,
---     D_variant:zipCode::string      AS D_zipCode,
---     D_variant:country::string      AS D_country,
---     D_variant:phoneNumber::string  AS D_phoneNumber,
---     D_variant:businessId::string   AS D_businessId,
---     D_variant:private::boolean     AS D_private,
---     D_variant:createdBy::string    AS D_createdBy,
---     D_variant:updatedBy::string    AS D_updatedBy,
---     to_timestamp(D_variant:created::bigint) AS D_created,
---     to_timestamp(D_variant:updated::bigint) AS D_updated,
+--     V,
+--     P,
+
+--     -- ✅ Flatten JSON fields
+--     D_struct.id            AS D_id,
+--     D_struct.name          AS D_name,
+--     D_struct.address1      AS D_address1,
+--     D_struct.address2      AS D_address2,
+--     D_struct.city          AS D_city,
+--     D_struct.state         AS D_state,
+--     D_struct.zipCode       AS D_zipCode,
+--     D_struct.country       AS D_country,
+--     D_struct.phoneNumber   AS D_phoneNumber,
+--     D_struct.businessId    AS D_businessId,
+--     D_struct.private       AS D_private,
+--     to_timestamp(D_struct.created::bigint)   AS D_created,
+--     D_struct.createdBy     AS D_createdBy,
+--     to_timestamp(D_struct.updated::bigint)   AS D_updated,
+--     D_struct.updatedBy     AS D_updatedBy,
+
 --     current_timestamp() AS processedTime,
 --     _change_type,
 --     _commit_version,
 --     _commit_timestamp
 --   FROM parsed
 -- )
--- KEYS (ID, BusinessID)
+-- KEYS (PatientID, PracticeID)   -- adjust if natural keys are different
 -- APPLY AS DELETE WHEN
 --   _change_type = "delete"
 -- SEQUENCE BY
