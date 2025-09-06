@@ -1,8 +1,6 @@
 -- -- ====================================================
--- -- 3️⃣ Silver table - parse VARIANT safely (triple-encoded JSON)
+-- -- 1️⃣ Create Silver table
 -- -- ====================================================
-
--- -- Create the Silver table
 -- CREATE OR REFRESH STREAMING TABLE silver_events_patient_data_scd2
 -- (
 --   ID STRING,
@@ -22,7 +20,7 @@
 --   Updated STRING,
 --   UpdatedBy STRING,
 
---   -- Extracted from D_variant
+--   -- Flattened fields from D
 --   D_id STRING,
 --   D_name STRING,
 --   D_address1 STRING,
@@ -38,7 +36,12 @@
 --   D_createdBy STRING,
 --   D_updated TIMESTAMP,
 --   D_updatedBy STRING,
+--   D_programs STRING,
+--   D_records STRING,
+--   D_shard STRING,
 
+--   V STRING,
+--   P STRING,
 --   processedTime TIMESTAMP
 -- )
 -- TBLPROPERTIES (
@@ -49,28 +52,15 @@
 --   'quality' = 'silver'
 -- );
 
+-- -- ====================================================
+-- -- 2️⃣ Create Flow with CDC / SCD2
+-- -- ====================================================
 -- CREATE FLOW silver_events_patient_data_cdc_scd2 AS AUTO CDC INTO
 --   silver_events_patient_data_scd2
 -- FROM (
 --   WITH parsed AS (
 --     SELECT
---       ID,
---       Shard,
---       Private,
---       Name,
---       Address1,
---       Address2,
---       City,
---       State,
---       ZipCode,
---       Country,
---       PhoneNumber,
---       BusinessID,
---       Created,
---       CreatedBy,
---       Updated,
---       UpdatedBy,
---       -- Parse triple-encoded JSON into VARIANT
+--       *,
 --       parse_json(
 --         regexp_replace(
 --           regexp_replace(
@@ -79,13 +69,7 @@
 --           ),
 --           '\\\\"', '"'
 --         )
---       ) AS D_variant,
---       P,
---       V,
---       ingestTime,
---       _change_type,
---       _commit_version,
---       _commit_timestamp
+--       ) AS D_struct
 --     FROM STREAM(patient_cdf)
 --   )
 --   SELECT
@@ -105,22 +89,29 @@
 --     CreatedBy,
 --     Updated,
 --     UpdatedBy,
---     -- Flatten into structured columns
---     D_variant:id::string           AS D_id,
---     D_variant:name::string         AS D_name,
---     D_variant:address1::string     AS D_address1,
---     D_variant:address2::string     AS D_address2,
---     D_variant:city::string         AS D_city,
---     D_variant:state::string        AS D_state,
---     D_variant:zipCode::string      AS D_zipCode,
---     D_variant:country::string      AS D_country,
---     D_variant:phoneNumber::string  AS D_phoneNumber,
---     D_variant:businessId::string   AS D_businessId,
---     D_variant:private::boolean     AS D_private,
---     D_variant:createdBy::string    AS D_createdBy,
---     D_variant:updatedBy::string    AS D_updatedBy,
---     to_timestamp(D_variant:created::bigint) AS D_created,
---     to_timestamp(D_variant:updated::bigint) AS D_updated,
+
+--     -- Flatten top-level fields from D_struct
+--     D_struct:id::STRING           AS D_id,
+--     D_struct:name::STRING         AS D_name,
+--     D_struct:address1::STRING     AS D_address1,
+--     D_struct:address2::STRING     AS D_address2,
+--     D_struct:city::STRING         AS D_city,
+--     D_struct:state::STRING        AS D_state,
+--     D_struct:zipCode::STRING      AS D_zipCode,
+--     D_struct:country::STRING      AS D_country,
+--     D_struct:phoneNumber::STRING  AS D_phoneNumber,
+--     D_struct:businessId::STRING   AS D_businessId,
+--     D_struct:private::BOOLEAN     AS D_private,
+--     to_timestamp(D_struct:created::BIGINT) AS D_created,
+--     D_struct:createdBy::STRING    AS D_createdBy,
+--     to_timestamp(D_struct:updated::BIGINT) AS D_updated,
+--     D_struct:updatedBy::STRING    AS D_updatedBy,
+--     D_struct:programs::STRING     AS D_programs,
+--     D_struct:records::STRING      AS D_records,
+--     D_struct:shard::STRING        AS D_shard,
+
+--     V,
+--     P,
 --     current_timestamp() AS processedTime,
 --     _change_type,
 --     _commit_version,
@@ -135,4 +126,6 @@
 -- COLUMNS * EXCEPT
 --   (_change_type, _commit_version, _commit_timestamp)
 -- STORED AS
---   SCD TYPE 2;
+--   SCD TYPE 1;
+
+
