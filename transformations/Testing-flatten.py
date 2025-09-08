@@ -178,3 +178,19 @@ def silver_events_patient_data_quarantine():
          .when(F.col("State").isNull() | (F.length("State") <= 1), "Invalid State")
          .otherwise("Unknown Constraint Failure")
     )
+
+
+# =========================================================
+# Optional: Schema Audit / Column Comparison
+# =========================================================
+@dlt.table(
+    name="silver_events_patient_data_schema_audit",
+    comment="Tracks added, removed, or changed columns over time"
+)
+def silver_events_patient_data_schema_audit():
+    df = dlt.read("silver_events_patient_data")
+
+    # Collect column names for audit
+    cols_df = df.select(F.explode(F.array(*[F.struct(F.lit(c).alias("column_name"), F.lit("string").alias("data_type")) for c in df.columns])).alias("col"))
+
+    return cols_df.withColumn("audit_ts", F.current_timestamp())
